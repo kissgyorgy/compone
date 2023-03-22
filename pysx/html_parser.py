@@ -14,7 +14,7 @@ from html import unescape
 
 import _markupbase
 
-__all__ = ["HTMLParser"]
+__all__ = ["CaseSensitiveHTMLParser"]
 
 # Regular expressions used for parsing
 
@@ -62,7 +62,7 @@ endendtag = re.compile(">")
 endtagfind = re.compile(r"</\s*([a-zA-Z][-.a-zA-Z0-9:_]*)\s*>")
 
 
-class HTMLParser(_markupbase.ParserBase):
+class CaseSensitiveHTMLParser(_markupbase.ParserBase):
     """Find tags and other markup and call handler functions.
 
     Usage:
@@ -315,7 +315,7 @@ class HTMLParser(_markupbase.ParserBase):
         match = tagfind_tolerant.match(rawdata, i + 1)
         assert match, "unexpected call to parse_starttag()"
         k = match.end()
-        self.lasttag = tag = match.group(1).lower()
+        self.lasttag = tag = match.group(1)
         while k < endpos:
             m = attrfind_tolerant.match(rawdata, k)
             if not m:
@@ -407,7 +407,7 @@ class HTMLParser(_markupbase.ParserBase):
                     return i + 3
                 else:
                     return self.parse_bogus_comment(i)
-            tagname = namematch.group(1).lower()
+            tagname = namematch.group(1)
             # consume and ignore other stuff between the name and the >
             # Note: this is not 100% correct, since we might have things like
             # </tag attr=">">, but looking for > after tha name should cover
@@ -416,7 +416,7 @@ class HTMLParser(_markupbase.ParserBase):
             self.handle_endtag(tagname)
             return gtpos + 1
 
-        elem = match.group(1).lower()  # script or style
+        elem = match.group(1)
         if self.cdata_elem is not None:
             if elem != self.cdata_elem:
                 self.handle_data(rawdata[i:gtpos])
