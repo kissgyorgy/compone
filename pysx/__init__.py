@@ -1,1 +1,1 @@
-from .html_parser import CaseSensitiveHTMLParser
+from .pysx_parser import parse
