@@ -1,4 +1,3 @@
-from textwrap import dedent
 from typing import Tuple
 
 
@@ -14,8 +13,7 @@ class Component:
 
     @property
     def children(self):
-        content = "\n".join(dedent(str(c)) for c in self._children)
-        return dedent(content)
+        return "\n".join(self._children)
 
     def __call__(self, *args, **kwargs):
         self._args = args
@@ -30,4 +28,4 @@ class Component:
 
     def __str__(self):
         content = self._func(*self._args, **self._kwargs, children=self.children)
-        return dedent(content)
+        return content
