@@ -1,15 +1,12 @@
-from typing import Tuple
-
-
 class Component:
     def __init__(self, func=None):
         self._func = func
 
     def __getitem__(self, children):
-        if not isinstance(children, Tuple):
+        if isinstance(children, str):
             children = (children,)
-        self._children = children
-        return self
+        self._children = [str(c) for c in children]
+        return str(self)
 
     @property
     def children(self):
@@ -27,5 +24,4 @@ class Component:
         return f"<{self._func.__name__}({params})>"
 
     def __str__(self):
-        content = self._func(*self._args, **self._kwargs, children=self.children)
-        return content
+        return self._func(*self._args, **self._kwargs, children=self.children)
