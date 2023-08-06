@@ -1,4 +1,4 @@
-from pycomp import Component
+from pycomp import Component, Sel
 from pycomp import html as h
 
 
@@ -33,13 +33,14 @@ def main():
             h.Li["first elem"],
             h.Li["second elem"],
         ],
-        h.Sel("hr"),
+        Sel("hr"),
         UnordList(names),
         h.Div[
             h.H1[title],
             h.P["paragraph"],
+            # these two are the same
             "<br>",
-            h.Br(),
+            h.Br,
         ],
         h.Div[
             h.P["first paragraph"],

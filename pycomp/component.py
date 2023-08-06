@@ -31,3 +31,33 @@ class Component:
 
     def __str__(self):
         return self._func(*self._args, **self._kwargs, children=self.children)
+
+
+class El(Component):
+    """Create Component from HTML tag on the fly."""
+
+    def __init__(self, tag: str):
+        super().__init__()
+        self._tag = tag
+
+    def __str__(self):
+        return f"""
+            <{self._tag}>
+                {self._children}
+            </{self._tag}>
+        """
+
+
+class SelMeta(type):
+    def __str__(self):
+        return f"<{self._tag} />"
+
+
+class Sel(metaclass=SelMeta):
+    """Self-closing element"""
+
+    def __init__(self, tag: str):
+        self._tag = tag
+
+    def __str__(self):
+        return f"<{self._tag} />"
