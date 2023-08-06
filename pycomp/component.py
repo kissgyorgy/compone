@@ -1,4 +1,3 @@
-from functools import cached_property
 from textwrap import dedent
 from typing import Tuple
 
@@ -13,7 +12,7 @@ class Component:
         self._children = children
         return self
 
-    @cached_property
+    @property
     def children(self):
         content = "\n".join(dedent(str(c)) for c in self._children)
         return dedent(content)
