@@ -37,7 +37,16 @@ class Component:
         return f"<{self._func.__name__}({params})>"
 
     def __str__(self):
-        return self._func(*self._args, **self._kwargs, children=self.children)
+        content = self._func(*self._args, **self._kwargs, children=self.children)
+        if isinstance(content, str):
+            return content
+
+        try:
+            iter(content)
+        except TypeError:
+            return str(content)
+        else:
+            return "\n".join(str(e) for e in content)
 
 
 class _HTMLComponent(Component):
