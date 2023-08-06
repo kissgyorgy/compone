@@ -1,103 +1,41 @@
-from .component import Component
+from .component import Elem, _Comp
+
+Html = Elem("html")
+Head = Elem("head")
+Body = Elem("body")
+Title = Elem("title")
+Div = Elem("div")
 
 Br = "<br>"
 Hr = "<hr />"
 
+P = Elem("p")
+Li = Elem("li")
 
-@Component
-def Html(children: str):
-    return f"""
-        <html>
-            {children}
-        </html>
-    """
-
-
-@Component
-def Head(children: str):
-    return f"""
-        <head>
-            {children}
-        </head>
-    """
+H1 = Elem("h1")
+H2 = Elem("h2")
+H3 = Elem("h3")
+H4 = Elem("h4")
+H5 = Elem("h5")
+H6 = Elem("h6")
 
 
-@Component
-def Body(children: str):
-    return f"""
-        <body>
-            {children}
-        </body>
-    """
+class _ListComp(_Comp):
+    def __getitem__(self, children):
+        if isinstance(children, str):
+            children = (children,)
+
+        for child in children:
+            ch = child.strip()
+            error_message = "List element children must be <li>"
+            assert ch.startswith("<li") and ch.endswith("</li>"), error_message
+            self._children.append(child)
+        return str(self)
 
 
-@Component
-def Title(children: str):
-    return f"<title>{children}</title>"
+class Ul(_ListComp):
+    """Unordered List"""
 
 
-@Component
-def P(children: str):
-    return f"<p>{children}</p>"
-
-
-@Component
-def Ul(children: str):
-    return f"""
-        <ul>
-            {children}
-        </ul>
-    """
-
-
-@Component
-def Ol(children: str):
-    return f"""
-        <ol>
-            {children}
-        </ol>
-    """
-
-
-@Component
-def Li(children: str):
-    return f"<li>{children}</li>"
-
-
-@Component
-def H1(children: str):
-    return f"<h1>{children}</h1>"
-
-
-@Component
-def H2(children: str):
-    return f"<h2>{children}</h2>"
-
-
-@Component
-def H3(children: str):
-    return f"<h3>{children}</h3>"
-
-
-@Component
-def H4(children: str):
-    return f"<h4>{children}</h4>"
-
-
-@Component
-def H5(children: str):
-    return f"<h5>{children}</h5>"
-
-
-@Component
-def H6(children: str):
-    return f"<h6>{children}</h6>"
-
-
-@Component
-def Div(children: str):
-    return f"""
-        <div>
-            {children}
-        </div>
-    """
+class Ol(_ListComp):
+    """Ordered List"""

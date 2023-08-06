@@ -1,1 +1,1 @@
-from .component import Component, Sel
+from .component import Component, Elem
