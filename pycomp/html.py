@@ -1,6 +1,39 @@
 from .component import Component
 
 Br = "<br>"
+Hr = "<hr />"
+
+
+@Component
+def Html(children: str):
+    return f"""
+        <html>
+            {children}
+        </html>
+    """
+
+
+@Component
+def Head(children: str):
+    return f"""
+        <head>
+            {children}
+        </head>
+    """
+
+
+@Component
+def Body(children: str):
+    return f"""
+        <body>
+            {children}
+        </body>
+    """
+
+
+@Component
+def Title(children: str):
+    return f"<title>{children}</title>"
 
 
 @Component

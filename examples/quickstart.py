@@ -4,16 +4,10 @@ from pycomp import html as h
 
 @Component
 def Layout(title: str, children: str):
-    return f"""
-        <html>
-            <head>
-                <title>{title}</title>
-            </head>
-            <body>
-                {children}
-            </body>
-        </html>
-    """
+    return h.Html[
+        h.Head[h.Title[title],],
+        h.Body[children],
+    ]
 
 
 @Component
