@@ -23,6 +23,12 @@ class Component:
         self._kwargs = kwargs
         return self
 
+    def __repr__(self):
+        args = ", ".join(repr(a) for a in self._args)
+        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
+        params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
+        return f"<{self._func.__name__}({params})>"
+
     def __str__(self):
         content = self._func(*self._args, **self._kwargs, children=self.children)
         return dedent(content)
