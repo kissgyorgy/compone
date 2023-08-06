@@ -18,8 +18,8 @@ def Layout(title: str, children: str):
 
 @Component
 def UnordList(elems: list, children: str):
-    li_elems = (h.Li()[elem] for elem in elems)
-    return h.Ul()[li_elems]
+    li_elems = (h.Li[elem] for elem in elems)
+    return h.Ul[li_elems]
 
 
 def main():
@@ -27,23 +27,23 @@ def main():
     title = "Page title"
 
     return Layout(title=title)[
-        h.P()[title],
+        h.P[title],
         "<div>HTML string</div>",
-        h.Ul()[
-            h.Li()["first elem"],
-            h.Li()["second elem"],
+        h.Ul[
+            h.Li["first elem"],
+            h.Li["second elem"],
         ],
         h.Sel("hr"),
         UnordList(names),
-        h.Div()[
-            h.H1()[title],
-            h.P()["paragraph"],
+        h.Div[
+            h.H1[title],
+            h.P["paragraph"],
             "<br>",
             h.Br(),
         ],
-        h.Div()[
-            h.P()["first paragraph"],
-            h.P()["second paragraph"],
+        h.Div[
+            h.P["first paragraph"],
+            h.P["second paragraph"],
         ],
     ]
 

@@ -1,12 +1,18 @@
 class Component:
     def __init__(self, func=None):
         self._func = func
+        self._args = tuple()
+        self._kwargs = {}
+        self._children = []
 
     def __getitem__(self, children):
         if isinstance(children, str):
             children = (children,)
         self._children = [str(c) for c in children]
         return str(self)
+
+    def __class_getitem__(cls, key):
+        return cls()[key]
 
     @property
     def children(self):
