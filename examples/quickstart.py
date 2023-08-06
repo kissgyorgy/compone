@@ -1,8 +1,8 @@
-from pycomp import make_component
+from pycomp import Component
 from pycomp.html import Sel
 
 
-@make_component
+@Component
 def Layout(title: str, children: str):
     return f"""
         <html>
@@ -16,7 +16,7 @@ def Layout(title: str, children: str):
     """
 
 
-@make_component
+@Component
 def UnordList(elems: list, children: str):
     namesli = "\n".join(f"<li>{elem}</li>" for elem in elems)
     return f"""
@@ -26,28 +26,28 @@ def UnordList(elems: list, children: str):
     """
 
 
-@make_component
+@Component
 def P(children: str):
     return f"<p>{children}</p>"
 
 
-@make_component
+@Component
 def Ul(children):
     return f"<ul>{children}</ul>"
 
 
-@make_component
+@Component
 def Li(children):
     return f"<li>{children}</li>"
 
 
-@make_component
+@Component
 def H(level: int, children: str):
     elem = f"h{level}"
     return f"<{elem}>{children}</{elem}>"
 
 
-@make_component
+@Component
 def Div(children: str):
     return f"""
         <div>

@@ -10,11 +10,11 @@ class El(Component):
         super().__init__()
         self._tag = tag
 
-    def render(self, children):
+    def __str__(self):
         return dedent(
             f"""
             <{self._tag}>
-                {children}
+                {self._children}
             </{self._tag}>
             """
         )
@@ -24,7 +24,4 @@ class Sel(El):
     """Self-closing element"""
 
     def __str__(self):
-        return self.render()
-
-    def render(self):
         return f"<{self._tag} />"
