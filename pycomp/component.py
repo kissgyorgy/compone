@@ -6,8 +6,15 @@ class Component:
         self._children = []
 
     def __getitem__(self, children):
-        if isinstance(children, str):
+        try:
+            iter(children)
+        except TypeError:
             children = (children,)
+        else:
+            # str is a special case, because it's an iterator too
+            if isinstance(children, str):
+                children = (children,)
+
         self._children = [str(c) for c in children]
         return str(self)
 
