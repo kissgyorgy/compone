@@ -1,5 +1,5 @@
 from pycomp import Component
-from pycomp.html import Sel
+from pycomp import html as h
 
 
 @Component
@@ -18,42 +18,8 @@ def Layout(title: str, children: str):
 
 @Component
 def UnordList(elems: list, children: str):
-    namesli = "\n".join(f"<li>{elem}</li>" for elem in elems)
-    return f"""
-        <ul>
-            {namesli}
-        </ul>
-    """
-
-
-@Component
-def P(children: str):
-    return f"<p>{children}</p>"
-
-
-@Component
-def Ul(children):
-    return f"<ul>{children}</ul>"
-
-
-@Component
-def Li(children):
-    return f"<li>{children}</li>"
-
-
-@Component
-def H(level: int, children: str):
-    elem = f"h{level}"
-    return f"<{elem}>{children}</{elem}>"
-
-
-@Component
-def Div(children: str):
-    return f"""
-        <div>
-            {children}
-        </div>
-    """
+    li_elems = (h.Li()[elem] for elem in elems)
+    return h.Ul()[li_elems]
 
 
 def main():
@@ -61,22 +27,23 @@ def main():
     title = "Page title"
 
     return Layout(title=title)[
-        P()[title],
+        h.P()[title],
         "<div>HTML string</div>",
-        Ul()[
-            Li()["first elem"],
-            Li()["second elem"],
+        h.Ul()[
+            h.Li()["first elem"],
+            h.Li()["second elem"],
         ],
-        Sel("hr"),
+        h.Sel("hr"),
         UnordList(names),
-        Div()[
-            H(1)[title],
-            P()["paragraph"],
+        h.Div()[
+            h.H1()[title],
+            h.P()["paragraph"],
             "<br>",
+            h.Br(),
         ],
-        Div()[
-            P()["first paragraph"],
-            P()["second paragraph"],
+        h.Div()[
+            h.P()["first paragraph"],
+            h.P()["second paragraph"],
         ],
     ]
 
