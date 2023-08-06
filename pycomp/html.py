@@ -1,8 +1,11 @@
-from .component import Elem, _Comp
+from typing import Optional
+
+from .component import Component, Elem, _HTMLComponent
 
 Html = Elem("html")
 Head = Elem("head")
 Body = Elem("body")
+Article = Elem("article")
 Title = Elem("title")
 Div = Elem("div")
 
@@ -20,7 +23,25 @@ H5 = Elem("h5")
 H6 = Elem("h6")
 
 
-class _ListComp(_Comp):
+class Img(Component):
+    def __init__(
+        self,
+        src: str,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ):
+        super().__init__()
+        self._src = src
+        self._width = width
+        self._height = height
+
+    def __str__(self):
+        width = f"width={self._width}" if self._width else ""
+        height = f"height={self._height}" if self._height else ""
+        return f'<img src="{self._src}"{width}{height} />'
+
+
+class _ListComp(_HTMLComponent):
     def __getitem__(self, children):
         if isinstance(children, str):
             children = (children,)
