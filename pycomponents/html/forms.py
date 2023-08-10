@@ -1,0 +1,16 @@
+from ..component import Elem, SelfElem
+
+Button = Elem("button")
+Datalist = Elem("datalist")
+Fieldset = Elem("fieldset")
+Form = Elem("form")
+Input = SelfElem("input")
+Label = Elem("label")
+Legend = Elem("legend")
+Meter = Elem("meter")
+Optgroup = Elem("optgroup")
+Option = Elem("option")
+Output = Elem("output")
+Progress = Elem("progress")
+Select = Elem("select")
+Textarea = Elem("textarea")

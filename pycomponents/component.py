@@ -1,10 +1,23 @@
-class Component:
+class _ComponentBase:
     def __init__(self, func=None):
         self._func = func
         self._args = tuple()
         self._kwargs = {}
         self._children = []
 
+    def __call__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        return self
+
+    def __repr__(self):
+        args = ", ".join(repr(a) for a in self._args)
+        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
+        params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
+        return f"<{self._func.__name__}({params})>"
+
+
+class Component(_ComponentBase):
     def __getitem__(self, children):
         try:
             iter(children)
@@ -25,17 +38,6 @@ class Component:
     def children(self):
         return "\n".join(self._children)
 
-    def __call__(self, *args, **kwargs):
-        self._args = args
-        self._kwargs = kwargs
-        return self
-
-    def __repr__(self):
-        args = ", ".join(repr(a) for a in self._args)
-        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
-        params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
-        return f"<{self._func.__name__}({params})>"
-
     def __str__(self):
         content = self._func(*self._args, **self._kwargs, children=self.children)
         if isinstance(content, str):
@@ -49,15 +51,26 @@ class Component:
             return "\n".join(str(e) for e in content)
 
 
-class _HTMLComponent(Component):
+class _HTMLComponentMixin:
     def __init__(self):
         super().__init__()
         self._name = self.__class__.__name__.lower()
 
+
+class _HTMLComponent(_HTMLComponentMixin, Component):
     def __str__(self):
         return f"<{self._name}>{self.children}</{self._name}>"
+
+
+class _SelfClosingHTMLComponent(_HTMLComponentMixin, _ComponentBase):
+    def __str__(self):
+        return f"<{self._name} />"
 
 
 def Elem(name):
     """Create Component from HTML element on the fly."""
     return type(name, (_HTMLComponent,), {})
+
+
+def SelfElem(name):
+    return type(name, (_SelfClosingHTMLComponent,), {})
