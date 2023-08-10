@@ -68,35 +68,40 @@ class Component(_ChildrenMixin):
 
 
 class _HTMLComponentBase:
+    attributes = None
+    name = None
+
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self._name = self.__class__.__name__.lower()
         self._args = args
+        if self.attributes is not None:
+            kwargs.update(self.attributes)
         self._kwargs = kwargs
 
-    def _attributes(self):
+    def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
         args = [conv(a) for a in self._args]
         kwargs = [safe(f'{conv(k)}="{escape(v)}"') for k, v in self._kwargs.items()]
-        params = args + kwargs
-        res = " " + " ".join(params) if params else ""
-        return res
+        params = " ".join(args) + " ".join(kwargs)
+        return " " + params if params else ""
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
     def __str__(self):
-        return safe(f"<{self._name}{self._attributes()}>{self.children}</{self._name}>")
+        return safe(
+            f"<{self.name}{self._get_attributes()}>{self.children}</{self.name}>"
+        )
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self):
-        return safe(f"<{self._name}{self._attributes()} />")
+        return safe(f"<{self.name}{self._get_attributes()} />")
 
 
 def Elem(name):
     """Create Component from HTML element on the fly."""
-    return type(name, (_HTMLComponent,), {})
+    return type(name, (_HTMLComponent,), {"name": name})
 
 
 def SelfElem(name):
-    return type(name, (_SelfClosingHTMLComponent,), {})
+    return type(name, (_SelfClosingHTMLComponent,), {"name": name})

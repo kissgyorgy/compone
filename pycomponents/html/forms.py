@@ -1,6 +1,5 @@
-from ..component import Elem, SelfElem
+from ..component import Elem, SelfElem, _HTMLComponent
 
-Button = Elem("button")
 Datalist = Elem("datalist")
 Fieldset = Elem("fieldset")
 Form = Elem("form")
@@ -14,3 +13,18 @@ Output = Elem("output")
 Progress = Elem("progress")
 Select = Elem("select")
 Textarea = Elem("textarea")
+
+
+class Button(_HTMLComponent):
+    name = "button"
+    attributes = {"type": "button"}
+
+
+class ResetButton(_HTMLComponent):
+    name = "button"
+    attributes = {"type": "reset"}
+
+
+class SubmitButton(_HTMLComponent):
+    name = "button"
+    attributes = {"type": "submit"}
