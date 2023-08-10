@@ -22,7 +22,10 @@ class _ChildrenMixin:
             if isinstance(children, (str, safe)):
                 children = (children,)
 
-        self._children = [escape(ch) for ch in children]
+        for ch in children:
+            ch = safe(ch) if isinstance(ch, _ChildrenMixin) else escape(ch)
+            self._children.append(ch)
+
         return safe(self)
 
     @property
@@ -62,9 +65,9 @@ class Component(_ChildrenMixin):
         try:
             iter(content)
         except TypeError:
-            return escape(str(content))
+            return escape(content)
         else:
-            return "\n".join(escape(e) for e in content)
+            return safe("\n".join(escape(e) for e in content))
 
 
 class _HTMLComponentBase:
