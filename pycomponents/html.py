@@ -9,6 +9,10 @@ Article = Elem("article")
 Title = Elem("title")
 Div = Elem("div")
 
+Center = Elem("center")
+Strong = Elem("strong")
+B = Elem("b")
+
 Br = "<br>"
 Hr = "<hr />"
 
@@ -36,8 +40,8 @@ class Img(Component):
         self._height = height
 
     def __str__(self):
-        width = f"width={self._width}" if self._width else ""
-        height = f"height={self._height}" if self._height else ""
+        width = f" width={self._width}" if self._width else ""
+        height = f" height={self._height}" if self._height else ""
         return f'<img src="{self._src}"{width}{height} />'
 
 
