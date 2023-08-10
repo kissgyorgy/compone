@@ -1,11 +1,12 @@
 from ..component import Elem
+from ..escape import safe
 
 A = Elem("a")
 Abbr = Elem("abbr")
 B = Elem("b")
 Bdi = Elem("bdi")
 Bdo = Elem("bdo")
-Br = "<br>"
+Br = safe("<br>")
 Cite = Elem("cite")
 Code = Elem("code")
 Data = Elem("data")
@@ -30,4 +31,4 @@ Sup = Elem("sup")
 Time = Elem("time")
 U = Elem("u")
 Var = Elem("var")
-Wbr = "<wbr />"
+Wbr = safe("<wbr />")

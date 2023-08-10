@@ -1,4 +1,5 @@
 from ..component import Elem, _HTMLComponent
+from ..escape import safe
 
 Blockquote = Elem("blockquote")
 Dd = Elem("dd")
@@ -7,7 +8,7 @@ Dt = Elem("dt")
 Div = Elem("div")
 Figcaption = Elem("figcaption")
 Figure = Elem("figure")
-Hr = "<hr>"
+Hr = safe("<hr>")
 Menu = Elem("menu")
 P = Elem("p")
 Pre = Elem("pre")

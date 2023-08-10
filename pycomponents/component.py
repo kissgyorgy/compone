@@ -1,3 +1,6 @@
+from .escape import _SafeStr, escape
+
+
 class _ComponentBase:
     def __init__(self, func=None):
         self._func = func
@@ -25,30 +28,34 @@ class Component(_ComponentBase):
             children = (children,)
         else:
             # str is a special case, because it's an iterator too
-            if isinstance(children, str):
+            if isinstance(children, (str, _SafeStr)):
                 children = (children,)
 
-        self._children = [str(c) for c in children]
-        return str(self)
+        self._children = [escape(ch) for ch in children]
+        return _SafeStr(self)
 
     def __class_getitem__(cls, key):
         return cls()[key]
 
     @property
     def children(self):
-        return "\n".join(self._children)
+        # Already escaped in __getitem__
+        return _SafeStr("\n".join(self._children))
 
     def __str__(self):
         content = self._func(*self._args, **self._kwargs, children=self.children)
-        if isinstance(content, str):
+
+        if isinstance(content, _SafeStr):
             return content
+        elif isinstance(content, str):
+            return escape(content)
 
         try:
             iter(content)
         except TypeError:
-            return str(content)
+            return escape(str(content))
         else:
-            return "\n".join(str(e) for e in content)
+            return "\n".join(escape(e) for e in content)
 
 
 class _HTMLComponentMixin:
@@ -59,12 +66,12 @@ class _HTMLComponentMixin:
 
 class _HTMLComponent(_HTMLComponentMixin, Component):
     def __str__(self):
-        return f"<{self._name}>{self.children}</{self._name}>"
+        return _SafeStr(f"<{self._name}>{self.children}</{self._name}>")
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentMixin, _ComponentBase):
     def __str__(self):
-        return f"<{self._name} />"
+        return _SafeStr(f"<{self._name} />")
 
 
 def Elem(name):
