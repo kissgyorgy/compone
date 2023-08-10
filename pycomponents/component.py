@@ -1,3 +1,5 @@
+import inspect
+
 from .escape import _SafeStr, escape
 
 
@@ -43,7 +45,11 @@ class Component(_ComponentBase):
         return _SafeStr("\n".join(self._children))
 
     def __str__(self):
-        content = self._func(*self._args, **self._kwargs, children=self.children)
+        argspec = inspect.getfullargspec(self._func)
+        if "children" in argspec.args or "children" in argspec.kwonlyargs:
+            content = self._func(*self._args, **self._kwargs, children=self.children)
+        else:
+            content = self._func(*self._args, **self._kwargs)
 
         if isinstance(content, _SafeStr):
             return content
