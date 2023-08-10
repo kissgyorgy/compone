@@ -1,7 +1,9 @@
 from typing import Self
 
 
-class _SafeStr(str):
+class safe(str):
+    """Exclude a string from autoescaping."""
+
     def __add__(self, other: str | Self):
         if isinstance(other, self.__class__):
             return self.__class__(str(self) + other)
@@ -16,7 +18,7 @@ def escape(s):
     Marks the resulting string as safe.
     """
 
-    if isinstance(s, _SafeStr):
+    if isinstance(s, safe):
         return s
     elif not isinstance(s, str):
         s = str(s)
@@ -27,8 +29,4 @@ def escape(s):
     s = s.replace('"', "&quot;")
     s = s.replace("'", "&#x27;")
 
-    return _SafeStr(s)
-
-
-def safe(s: str):
-    return _SafeStr(s)
+    return safe(s)
