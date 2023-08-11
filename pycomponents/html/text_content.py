@@ -21,11 +21,11 @@ class _ListComp(_HTMLComponent):
             children = (children,)
 
         for child in children:
-            ch = child.strip()
+            ch = str(child).strip()
             error_message = "List element children must be <li>"
             assert ch.startswith("<li") and ch.endswith("</li>"), error_message
-            self._children.append(child)
-        return str(self)
+            self._children.append(ch)
+        return safe(self)
 
 
 class Ul(_ListComp):

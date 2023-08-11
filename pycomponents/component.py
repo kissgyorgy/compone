@@ -19,13 +19,11 @@ class _ChildrenMixin:
             children = (children,)
         else:
             # str is a special case, because it's an iterator too
-            if isinstance(children, (str, safe)):
+            # _ChildrenMixins are also iterators because of this very method
+            if isinstance(children, (str, safe, _ChildrenMixin)):
                 children = (children,)
 
-        for ch in children:
-            ch = safe(ch) if isinstance(ch, _ChildrenMixin) else escape(ch)
-            self._children.append(ch)
-
+        self._children = [escape(ch) for ch in children]
         return safe(self)
 
     @property
