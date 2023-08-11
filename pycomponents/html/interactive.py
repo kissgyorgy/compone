@@ -1,5 +1,5 @@
-from ..component import Elem
+from ..component import _Elem
 
-Details = Elem("details")
-Dialog = Elem("dialog")
-Summary = Elem("summary")
+Details = _Elem("details")
+Dialog = _Elem("dialog")
+Summary = _Elem("summary")

@@ -1,4 +1,4 @@
-from ..component import Elem
+from ..component import _Elem
 
-Slot = Elem("slot")
-Template = Elem("template")
+Slot = _Elem("slot")
+Template = _Elem("template")

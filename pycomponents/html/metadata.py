@@ -1,8 +1,8 @@
-from ..component import Elem
+from ..component import _Elem
 
-Base = Elem("base")
-Head = Elem("head")
-Link = Elem("link")
-Meta = Elem("meta")
-Style = Elem("style")
-Title = Elem("title")
+Base = _Elem("base")
+Head = _Elem("head")
+Link = _Elem("link")
+Meta = _Elem("meta")
+Style = _Elem("style")
+Title = _Elem("title")

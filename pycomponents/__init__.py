@@ -1,2 +1,2 @@
-from .component import Component, Elem
+from .component import Component
 from .escape import escape, safe

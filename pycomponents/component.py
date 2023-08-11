@@ -105,10 +105,10 @@ def Component(func):
     return type(func.__name__, (_Component,), {"func": func})
 
 
-def Elem(name):
+def _Elem(name):
     """Create Component from HTML element on the fly."""
     return type(name, (_HTMLComponent,), {"name": name})
 
 
-def SelfElem(name):
+def _SelfElem(name):
     return type(name, (_SelfClosingHTMLComponent,), {"name": name})

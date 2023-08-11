@@ -1,8 +1,8 @@
-from ..component import Elem, SelfElem
+from ..component import _Elem, _SelfElem
 
-Embed = SelfElem("embed")
-Iframe = Elem("iframe")
-Object = Elem("object")
-Picture = Elem("picture")
-Portal = Elem("portal")
-Source = SelfElem("source")
+Embed = _SelfElem("embed")
+Iframe = _Elem("iframe")
+Object = _Elem("object")
+Picture = _Elem("picture")
+Portal = _Elem("portal")
+Source = _SelfElem("source")

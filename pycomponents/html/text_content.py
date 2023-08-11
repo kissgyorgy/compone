@@ -1,18 +1,18 @@
-from ..component import Elem, _HTMLComponent
+from ..component import _Elem, _HTMLComponent
 from ..escape import safe
 
-Blockquote = Elem("blockquote")
-Dd = Elem("dd")
-Dl = Elem("dl")
-Dt = Elem("dt")
-Div = Elem("div")
-Figcaption = Elem("figcaption")
-Figure = Elem("figure")
+Blockquote = _Elem("blockquote")
+Dd = _Elem("dd")
+Dl = _Elem("dl")
+Dt = _Elem("dt")
+Div = _Elem("div")
+Figcaption = _Elem("figcaption")
+Figure = _Elem("figure")
 Hr = safe("<hr>")
-Menu = Elem("menu")
-P = Elem("p")
-Pre = Elem("pre")
-Li = Elem("li")
+Menu = _Elem("menu")
+P = _Elem("p")
+Pre = _Elem("pre")
+Li = _Elem("li")
 
 
 class _ListComp(_HTMLComponent):

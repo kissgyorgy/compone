@@ -1,12 +1,12 @@
-from ..component import Elem
+from ..component import _Elem
 
-Caption = Elem("caption")
-Col = Elem("col")
-Colgroup = Elem("colgroup")
-Table = Elem("table")
-Tbody = Elem("tbody")
-Td = Elem("td")
-Tfoot = Elem("tfoot")
-Th = Elem("th")
-Thead = Elem("thead")
-Tr = Elem("tr")
+Caption = _Elem("caption")
+Col = _Elem("col")
+Colgroup = _Elem("colgroup")
+Table = _Elem("table")
+Tbody = _Elem("tbody")
+Td = _Elem("td")
+Tfoot = _Elem("tfoot")
+Th = _Elem("th")
+Thead = _Elem("thead")
+Tr = _Elem("tr")

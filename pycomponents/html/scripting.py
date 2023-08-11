@@ -1,5 +1,5 @@
-from ..component import Elem
+from ..component import _Elem
 
-Canvas = Elem("canvas")
-Noscript = Elem("noscript")
-Script = Elem("script")
+Canvas = _Elem("canvas")
+Noscript = _Elem("noscript")
+Script = _Elem("script")

@@ -1,18 +1,18 @@
-from ..component import Elem, SelfElem, _HTMLComponent
+from ..component import _Elem, _HTMLComponent, _SelfElem
 
-Datalist = Elem("datalist")
-Fieldset = Elem("fieldset")
-Form = Elem("form")
-Input = SelfElem("input")
-Label = Elem("label")
-Legend = Elem("legend")
-Meter = Elem("meter")
-Optgroup = Elem("optgroup")
-Option = Elem("option")
-Output = Elem("output")
-Progress = Elem("progress")
-Select = Elem("select")
-Textarea = Elem("textarea")
+Datalist = _Elem("datalist")
+Fieldset = _Elem("fieldset")
+Form = _Elem("form")
+Input = _SelfElem("input")
+Label = _Elem("label")
+Legend = _Elem("legend")
+Meter = _Elem("meter")
+Optgroup = _Elem("optgroup")
+Option = _Elem("option")
+Output = _Elem("output")
+Progress = _Elem("progress")
+Select = _Elem("select")
+Textarea = _Elem("textarea")
 
 
 class Button(_HTMLComponent):

@@ -1,8 +1,8 @@
-from ..component import Elem, SelfElem
+from ..component import _Elem, _SelfElem
 
-Area = SelfElem("area")
-Audio = Elem("audio")
-Img = SelfElem("img")
-Map = Elem("map")
-Track = SelfElem("track")
-Video = Elem("video")
+Area = _SelfElem("area")
+Audio = _Elem("audio")
+Img = _SelfElem("img")
+Map = _Elem("map")
+Track = _SelfElem("track")
+Video = _Elem("video")

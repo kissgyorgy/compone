@@ -1,4 +1,4 @@
-from ..component import Elem
+from ..component import _Elem
 from .content_sectioning import (
     H1,
     H2,
@@ -90,8 +90,8 @@ from .text_content import (
 )
 from .web_components import Slot, Template
 
-Html = Elem("html")
-Body = Elem("body")
+Html = _Elem("html")
+Body = _Elem("body")
 
-Svg = Elem("svg")
-Math = Elem("math")
+Svg = _Elem("svg")
+Math = _Elem("math")
