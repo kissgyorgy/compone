@@ -1,4 +1,6 @@
+import functools
 import inspect
+from typing import Callable
 
 from .escape import escape, safe
 
@@ -6,8 +8,6 @@ from .escape import escape, safe
 class _ChildrenMixin:
     def __init__(self):
         self._children = []
-        self._args = tuple()
-        self._kwargs = {}
 
     def __class_getitem__(cls, key):
         return cls()[key]
@@ -33,29 +33,29 @@ class _ChildrenMixin:
         # Already escaped in __getitem__
         return safe("\n".join(self._children))
 
-    def __call__(self, *args, **kwargs):
+
+class _Component(_ChildrenMixin):
+    func: Callable
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
         self._args = args
         self._kwargs = kwargs
-        return self
-
-
-class Component(_ChildrenMixin):
-    def __init__(self, func=None):
-        super().__init__()
-        self._func = func
 
     def __repr__(self):
         args = ", ".join(repr(a) for a in self._args)
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
-        return f"<{self._func.__name__}({params})>"
+        return f"<{self.func.__name__}({params})>"
 
     def __str__(self):
-        argspec = inspect.getfullargspec(self._func)
+        # self.func is unbound
+        func = self.__class__.func
+        argspec = inspect.getfullargspec(func)
         if "children" in argspec.args or "children" in argspec.kwonlyargs:
-            content = self._func(*self._args, **self._kwargs, children=self.children)
+            content = func(*self._args, **self._kwargs, children=self.children)
         else:
-            content = self._func(*self._args, **self._kwargs)
+            content = func(*self._args, **self._kwargs)
 
         if isinstance(content, safe):
             return content
@@ -99,6 +99,10 @@ class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self):
         return safe(f"<{self.name}{self._get_attributes()} />")
+
+
+def Component(func):
+    return type(func.__name__, (_Component,), {"func": func})
 
 
 def Elem(name):
