@@ -90,10 +90,13 @@ class _HTMLComponentBase:
 
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
-        args = [conv(a) for a in self._args]
-        kwargs = [safe(f'{conv(k)}="{escape(v)}"') for k, v in self._kwargs.items()]
-        params = " ".join(args) + " ".join(kwargs)
-        return " " + params if params else ""
+        args = " ".join(conv(a) for a in self._args)
+        args = " " + args if args else ""
+        kwargs = " ".join(
+            safe(f'{conv(k)}="{escape(v)}"') for k, v in self._kwargs.items()
+        )
+        kwargs = " " + kwargs if kwargs else ""
+        return args + kwargs
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
