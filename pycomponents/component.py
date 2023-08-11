@@ -1,4 +1,3 @@
-import functools
 import inspect
 from typing import Callable
 
@@ -22,9 +21,16 @@ class _ChildrenMixin:
             # _ChildrenMixins are also iterators because of this very method
             if isinstance(children, (str, safe, _ChildrenMixin)):
                 children = (children,)
-
-        self._children = [escape(ch) for ch in children]
+        self._children = self._escape(children)
         return safe(self)
+
+    def _escape(self, children):
+        escaped_children = []
+        for ch in children:
+            is_component = isinstance(ch, (_ChildrenMixin, _HTMLComponentBase))
+            safe_ch = safe(ch) if is_component else escape(ch)
+            escaped_children.append(safe_ch)
+        return escaped_children
 
     @property
     def children(self):
@@ -57,6 +63,8 @@ class _Component(_ChildrenMixin):
 
         if isinstance(content, safe):
             return content
+        elif isinstance(content, (_ChildrenMixin, _HTMLComponentBase)):
+            return safe(content)
         elif isinstance(content, str):
             return escape(content)
 
@@ -65,7 +73,8 @@ class _Component(_ChildrenMixin):
         except TypeError:
             return escape(content)
         else:
-            return safe("\n".join(escape(e) for e in content))
+            # content is not str here
+            return safe("\n".join(self._escape(content)))
 
 
 class _HTMLComponentBase:
