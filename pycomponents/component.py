@@ -72,7 +72,7 @@ class _Component(_ChildrenMixin):
 
 class _HTMLComponentBase:
     attributes = None
-    name = None
+    html_tag = None
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -92,23 +92,25 @@ class _HTMLComponentBase:
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
     def __str__(self):
         return safe(
-            f"<{self.name}{self._get_attributes()}>{self.children}</{self.name}>"
+            f"<{self.html_tag}{self._get_attributes()}>{self.children}</{self.html_tag}>"
         )
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self):
-        return safe(f"<{self.name}{self._get_attributes()} />")
+        return safe(f"<{self.html_tag}{self._get_attributes()} />")
 
 
 def Component(func):
     return type(func.__name__, (_Component,), {"func": func})
 
 
-def _Elem(name):
+def _Elem(html_tag):
     """Create Component from HTML element on the fly."""
-    return type(name, (_HTMLComponent,), {"name": name})
+    return type(html_tag.capitalize(), (_HTMLComponent,), {"html_tag": html_tag})
 
 
-def _SelfElem(name):
-    return type(name, (_SelfClosingHTMLComponent,), {"name": name})
+def _SelfElem(html_tag):
+    return type(
+        html_tag.capitalize(), (_SelfClosingHTMLComponent,), {"html_tag": html_tag}
+    )

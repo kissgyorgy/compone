@@ -16,15 +16,15 @@ Textarea = _Elem("textarea")
 
 
 class Button(_HTMLComponent):
-    name = "button"
+    html_tag = "button"
     attributes = {"type": "button"}
 
 
 class ResetButton(_HTMLComponent):
-    name = "button"
+    html_tag = "button"
     attributes = {"type": "reset"}
 
 
 class SubmitButton(_HTMLComponent):
-    name = "button"
+    html_tag = "button"
     attributes = {"type": "submit"}

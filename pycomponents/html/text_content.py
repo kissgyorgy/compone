@@ -29,8 +29,8 @@ class _ListComp(_HTMLComponent):
 
 
 class Ul(_ListComp):
-    """Unordered List"""
+    html_tag = "ul"
 
 
 class Ol(_ListComp):
-    """Ordered List"""
+    html_tag = "ol"
