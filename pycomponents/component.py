@@ -86,6 +86,8 @@ class _HTMLComponentBase:
         self._args = args
         if self.attributes is not None:
             kwargs.update(self.attributes)
+        if (class_name := kwargs.pop("class_name", None)) is not None:
+            kwargs["class"] = class_name
         self._kwargs = kwargs
 
     def _get_attributes(self):
