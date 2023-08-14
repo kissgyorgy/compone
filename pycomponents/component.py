@@ -86,9 +86,13 @@ class _HTMLComponentBase:
         self._args = args
         if self.attributes is not None:
             kwargs.update(self.attributes)
-        if (class_name := kwargs.pop("class_name", None)) is not None:
-            kwargs["class"] = class_name
-        self._kwargs = kwargs
+        self._kwargs = self._replace_keyword_attributes(kwargs)
+
+    def _replace_keyword_attributes(self, kwargs):
+        for keyword in {"class", "for", "is"}:
+            if (underscored := keyword + "_") in kwargs:
+                kwargs[keyword] = kwargs.pop(underscored)
+        return kwargs
 
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
