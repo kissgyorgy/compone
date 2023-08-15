@@ -2,6 +2,7 @@ from ..component import _Elem, _HTMLComponent, _SelfElem
 
 Datalist = _Elem("datalist")
 Fieldset = _Elem("fieldset")
+Button = _Elem("button")
 Form = _Elem("form")
 Input = _SelfElem("input")
 Label = _Elem("label")
@@ -15,7 +16,7 @@ Select = _Elem("select")
 Textarea = _Elem("textarea")
 
 
-class Button(_HTMLComponent):
+class ButtonButton(_HTMLComponent):
     html_tag = "button"
     attributes = {"type": "button"}
 
