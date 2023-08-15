@@ -20,6 +20,8 @@ def escape(s):
 
     if isinstance(s, safe):
         return s
+    elif s is None:
+        return safe("")
     elif not isinstance(s, str):
         s = str(s)
 
