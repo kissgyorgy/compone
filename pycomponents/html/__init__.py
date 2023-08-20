@@ -71,7 +71,7 @@ from .inline_text import (
 from .interactive import Details, Dialog, Summary
 from .metadata import Base, Head, Link, Meta, Style, Title
 from .multimedia import Area, Audio, Img, Map, Track, Video
-from .scripting import Canvas, Noscript, Script, ScriptTemplate
+from .scripting import Canvas, Noscript, Script
 from .table import Caption, Col, Colgroup, Table, Tbody, Td, Tfoot, Th, Thead, Tr
 from .text_content import (
     Blockquote,

@@ -12,11 +12,6 @@ class _ChildrenMixin:
         return cls()[key]
 
     def __getitem__(self, children):
-        children = self._convert_tuple(children)
-        self._children = self._escape(children)
-        return safe(self)
-
-    def _convert_tuple(self, children):
         try:
             iter(children)
         except TypeError:
@@ -26,7 +21,8 @@ class _ChildrenMixin:
             # _ChildrenMixins are also iterators because of this very method
             if isinstance(children, (str, safe, _ChildrenMixin)):
                 children = (children,)
-        return children
+        self._children = self._escape(children)
+        return safe(self)
 
     def _escape(self, children):
         escaped_children = []
