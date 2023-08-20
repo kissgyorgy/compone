@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "pycomponents"
+name = "compone"
 version = "0.1.0"
 description = "Component framework for Python"
 authors = ["György Kiss <gyorgy@duck.com>"]
