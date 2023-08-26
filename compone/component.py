@@ -5,6 +5,18 @@ from typing import Callable
 from .escape import escape, safe
 
 
+class _ComponentBase:
+    def __init__(self, **kwargs):
+        self._kwargs = kwargs
+
+    def __call__(self, **kwargs):
+        merged_kwargs = {**self._kwargs, **kwargs}
+        return self.__class__(**merged_kwargs)
+
+    def __repr__(self):
+        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
+        return f"<{self.func.__name__}({kwargs})>"
+
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
     def __class_getitem__(cls, key):
@@ -28,7 +40,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
     def _escape(self, children):
         escaped_children = []
         for ch in children:
-            is_component = isinstance(ch, (_ChildrenMixin, _HTMLComponentBase))
+            is_component = isinstance(ch, _ComponentBase)
             safe_ch = safe(ch) if is_component else escape(ch)
             escaped_children.append(safe_ch)
         return escaped_children
@@ -42,32 +54,23 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class _Component(_ChildrenMixin):
+class _Component(_ComponentBase, _ChildrenMixin):
     func: Callable
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self._args = args
-        self._kwargs = kwargs
-
-    def __repr__(self):
-        args = ", ".join(repr(a) for a in self._args)
-        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
-        params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
-        return f"<{self.func.__name__}({params})>"
+    pass_children: bool
 
     def render(self, children) -> safe:
-        # self.func is unbound
-        func = self.__class__.func
-        argspec = inspect.getfullargspec(func)
-        if "children" in argspec.args or "children" in argspec.kwonlyargs:
-            content = func(*self._args, **self._kwargs, children=children)
+        if self.pass_children:
+            kwargs = {**self._kwargs, "children": children}
         else:
-            content = func(*self._args, **self._kwargs)
+            # should be okay not to copy
+            kwargs = self._kwargs
+
+        # self.func is unbound
+        content = self.__class__.func(**kwargs)
 
         if isinstance(content, safe):
             return content
-        elif isinstance(content, (_ChildrenMixin, _HTMLComponentBase)):
+        elif isinstance(content, _ComponentBase):
             return safe(content)
         elif isinstance(content, str):
             return escape(content)
@@ -81,32 +84,28 @@ class _Component(_ChildrenMixin):
             return safe("\n".join(self._escape(content)))
 
 
-class _HTMLComponentBase:
+class _HTMLComponentBase(_ComponentBase):
+    html_tag: str
     attributes = None
-    html_tag = None
 
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self._args = args
+    def __init__(self, **kwargs):
         if self.attributes is not None:
             kwargs.update(self.attributes)
-        self._kwargs = self._replace_keyword_attributes(kwargs)
 
-    def _replace_keyword_attributes(self, kwargs):
-        for keyword in {"class", "for", "is"}:
-            if (underscored := keyword + "_") in kwargs:
-                kwargs[keyword] = kwargs.pop(underscored)
-        return kwargs
+        for key, val in kwargs.copy().items():
+            if key in {"class_", "for_", "is_"}:
+                no_underscore = key[:-1]
+                kwargs[no_underscore] = val
+
+        super().__init__(**kwargs)
 
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
-        args = " ".join(conv(a) for a in self._args)
-        args = " " + args if args else ""
         kwargs = " ".join(
             safe(f'{conv(k)}="{escape(v)}"') for k, v in self._kwargs.items()
         )
         kwargs = " " + kwargs if kwargs else ""
-        return args + kwargs
+        return kwargs
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
@@ -124,7 +123,17 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
 
 
 def Component(func):
-    return type(func.__name__, (_Component,), {"func": func})
+    argspec = inspect.getfullargspec(func)
+    if argspec.args:
+        raise TypeError(
+            "Components must only have keyword arguments!\n           "
+            f"Found positional arguments: {argspec.args} in {func.__name__}"
+        )
+
+    pass_children = "children" in argspec.kwonlyargs
+    return type(
+        func.__name__, (_Component,), {"func": func, "pass_children": pass_children}
+    )
 
 
 def _Elem(html_tag):
