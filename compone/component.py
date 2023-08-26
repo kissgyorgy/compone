@@ -1,11 +1,12 @@
+import abc
 import inspect
 from typing import Callable
 
 from .escape import escape, safe
 
 
-class _ChildrenMixin:
 
+class _ChildrenMixin(metaclass=abc.ABCMeta):
     def __class_getitem__(cls, key):
         return cls()[key]
 
@@ -36,8 +37,9 @@ class _ChildrenMixin:
         # not called through __getitem__, so there is no children
         return self.render(None)
 
+    @abc.abstractmethod
     def render(self, children) -> safe:
-        raise
+        ...
 
 
 class _Component(_ChildrenMixin):
