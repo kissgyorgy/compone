@@ -20,12 +20,12 @@ class _ListComp(_HTMLComponent):
         if isinstance(children, str):
             children = (children,)
 
+        error_message = "List element children must be <li>"
         for child in children:
             ch = str(child).strip()
-            error_message = "List element children must be <li>"
             assert ch.startswith("<li") and ch.endswith("</li>"), error_message
-            self._children.append(ch)
-        return safe(self)
+
+        return super().__getitem__(children)
 
 
 class Ul(_ListComp):

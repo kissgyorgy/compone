@@ -5,8 +5,6 @@ from .escape import escape, safe
 
 
 class _ChildrenMixin:
-    def __init__(self):
-        self._children = []
 
     def __class_getitem__(cls, key):
         return cls()[key]
@@ -21,8 +19,10 @@ class _ChildrenMixin:
             # _ChildrenMixins are also iterators because of this very method
             if isinstance(children, (str, safe, _ChildrenMixin)):
                 children = (children,)
-        self._children = self._escape(children)
-        return safe(self)
+
+        escaped_children = self._escape(children)
+        safe_children = safe("".join(escaped_children))
+        return self.render(safe_children)
 
     def _escape(self, children):
         escaped_children = []
@@ -32,10 +32,12 @@ class _ChildrenMixin:
             escaped_children.append(safe_ch)
         return escaped_children
 
-    @property
-    def children(self):
-        # Already escaped in __getitem__
-        return safe("\n".join(self._children))
+    def __str__(self):
+        # not called through __getitem__, so there is no children
+        return self.render(None)
+
+    def render(self, children) -> safe:
+        raise
 
 
 class _Component(_ChildrenMixin):
@@ -52,12 +54,12 @@ class _Component(_ChildrenMixin):
         params = f"{args}, {kwargs}" if args and kwargs else args + kwargs
         return f"<{self.func.__name__}({params})>"
 
-    def __str__(self):
+    def render(self, children) -> safe:
         # self.func is unbound
         func = self.__class__.func
         argspec = inspect.getfullargspec(func)
         if "children" in argspec.args or "children" in argspec.kwonlyargs:
-            content = func(*self._args, **self._kwargs, children=self.children)
+            content = func(*self._args, **self._kwargs, children=children)
         else:
             content = func(*self._args, **self._kwargs)
 
@@ -106,15 +108,17 @@ class _HTMLComponentBase:
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
-    def __str__(self):
-        return safe(
-            f"<{self.html_tag}{self._get_attributes()}>{self.children}</{self.html_tag}>"
-        )
+    def render(self, children):
+        if not children:
+            children = ""
+        attributes = self._get_attributes()
+        return safe(f"<{self.html_tag}{attributes}>{children}</{self.html_tag}>")
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self):
-        return safe(f"<{self.html_tag}{self._get_attributes()} />")
+        attributes = self._get_attributes()
+        return safe(f"<{self.html_tag}{attributes} />")
 
 
 def Component(func):
