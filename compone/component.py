@@ -92,20 +92,34 @@ class _HTMLComponentBase(_ComponentBase):
         if self.attributes is not None:
             kwargs.update(self.attributes)
 
+        self._keyval_args = {}
+        self._bool_args = []
+
         for key, val in kwargs.copy().items():
             if key in {"class_", "for_", "is_"}:
                 no_underscore = key[:-1]
                 kwargs[no_underscore] = val
+                self._keyval_args[no_underscore] = val
+            elif isinstance(val, bool):
+                if val:
+                    self._bool_args.append(key)
+                else:
+                    # must not include in the output
+                    continue
+            else:
+                self._keyval_args[key] = val
 
         super().__init__(**kwargs)
 
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
-        kwargs = " ".join(
-            safe(f'{conv(k)}="{escape(v)}"') for k, v in self._kwargs.items()
+        bool_args = " ".join(conv(a) for a in self._bool_args)
+        bool_args = " " + bool_args if bool_args else ""
+        kv_args = " ".join(
+            safe(f'{conv(k)}="{escape(v)}"') for k, v in self._keyval_args.items()
         )
-        kwargs = " " + kwargs if kwargs else ""
-        return kwargs
+        kv_args = " " + kv_args if kv_args else ""
+        return bool_args + kv_args
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
