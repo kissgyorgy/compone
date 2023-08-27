@@ -17,6 +17,16 @@ class _ComponentBase:
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         return f"<{self.__class__.__name__}({kwargs})>"
 
+    def __mul__(self, other):
+        if not isinstance(other, int):
+            return NotImplemented
+
+        # Every component is safe by default, so the result should be safe too
+        Multiple = Component(lambda: safe(self) * other)
+        Multiple.__name__ = "Multi" + self.__class__.__name__
+        Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
+        return Multiple()
+
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
     def __class_getitem__(cls, key):

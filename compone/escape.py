@@ -12,6 +12,10 @@ class safe(str):
     def __repr__(self):
         return f'{self.__class__.__name__}("{str(self)}")'
 
+    def __mul__(self, other):
+        mul_str = super().__mul__(other)
+        return self.__class__(mul_str)
+
 
 def escape(s):
     """Replace special characters to HTML-safe sequences.
