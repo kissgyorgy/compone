@@ -146,6 +146,12 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
         return safe(f"<{self.html_tag}{attributes} />")
 
 
+class _SimpleHTMLComponent(_HTMLComponentBase):
+    def __str__(self):
+        attributes = self._get_attributes()
+        return safe(f"<{self.html_tag}{attributes}>")
+
+
 def Component(func):
     argspec = inspect.getfullargspec(func)
     if argspec.args:
@@ -156,16 +162,25 @@ def Component(func):
 
     pass_children = "children" in argspec.kwonlyargs
     return type(
-        func.__name__, (_Component,), {"func": func, "pass_children": pass_children}
+        func.__name__,
+        (_Component,),
+        dict(func=func, pass_children=pass_children, __module__=func.__module__),
+    )
+
+
+def _HtmlElem(html_tag, parent_class):
+    return type(
+        html_tag.capitalize(),
+        (parent_class,),
+        dict(html_tag=html_tag, __module__="compone.html"),
     )
 
 
 def _Elem(html_tag):
     """Create Component from HTML element on the fly."""
-    return type(html_tag.capitalize(), (_HTMLComponent,), {"html_tag": html_tag})
+    return _HtmlElem(html_tag, _HTMLComponent)
 
 
 def _SelfElem(html_tag):
-    return type(
-        html_tag.capitalize(), (_SelfClosingHTMLComponent,), {"html_tag": html_tag}
-    )
+    """Create Component from self-closing HTML element on the fly."""
+    return _HtmlElem(html_tag, _SelfClosingHTMLComponent)

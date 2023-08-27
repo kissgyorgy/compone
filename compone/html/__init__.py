@@ -69,8 +69,10 @@ from .inline_text import (
     Wbr,
 )
 from .interactive import Details, Dialog, Summary
+from .main import Body, Html
 from .metadata import Base, Head, Link, Meta, Style, Title
 from .multimedia import Area, Audio, Img, Map, Track, Video
+from .other import Math, Svg
 from .scripting import Canvas, Noscript, Script
 from .table import Caption, Col, Colgroup, Table, Tbody, Td, Tfoot, Th, Thead, Tr
 from .text_content import (
@@ -90,9 +92,3 @@ from .text_content import (
     Ul,
 )
 from .web_components import Slot, Template
-
-Html = _Elem("html")
-Body = _Elem("body")
-
-Svg = _Elem("svg")
-Math = _Elem("math")
