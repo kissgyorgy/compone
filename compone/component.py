@@ -9,10 +9,6 @@ class _ComponentBase:
     def __init__(self, **kwargs):
         self._kwargs = kwargs
 
-    def __call__(self, **kwargs):
-        merged_kwargs = {**self._kwargs, **kwargs}
-        return self.__class__(**merged_kwargs)
-
     def __repr__(self):
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         return f"<{self.__class__.__name__}({kwargs})>"
@@ -26,6 +22,30 @@ class _ComponentBase:
         Multiple.__name__ = "Multi" + self.__class__.__name__
         Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
         return Multiple()
+
+    def _merge(self, kwargs):
+        merged_kwargs = {**self._kwargs, **kwargs}
+        return self.__class__(**merged_kwargs)
+
+    def __call__(self, **kwargs):
+        if overlapping := [key for key in kwargs if key in self._kwargs]:
+            overlapping_keys = ", ".join(overlapping)
+            raise KeyError(
+                f"{overlapping_keys} already specified in {self!r}, "
+                "use the replace method if you want to replace arguments"
+            )
+        return self._merge(kwargs)
+
+    def replace(self, **kwargs):
+        return self._merge(kwargs)
+
+    def append(self, **kwargs):
+        appended = {}
+        for key, val in kwargs.items():
+            if key in self._kwargs:
+                val = self._kwargs[key] + val
+            appended[key] = val
+        return self._merge(appended)
 
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
@@ -102,24 +122,39 @@ class _HTMLComponentBase(_ComponentBase):
         if self.attributes is not None:
             kwargs.update(self.attributes)
 
-        self._keyval_args = {}
-        self._bool_args = []
+        new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
+        super().__init__(**new_kwargs)
 
-        for key, val in kwargs.copy().items():
+    def _convert_kwargs(self, kwargs):
+        new_kwargs = kwargs.copy()
+        keyval_args = {}
+        bool_args = []
+
+        for key, val in kwargs.items():
             if key in {"class_", "for_", "is_"}:
+                new_kwargs.pop(key)
                 no_underscore = key[:-1]
-                kwargs[no_underscore] = val
-                self._keyval_args[no_underscore] = val
+                new_kwargs[no_underscore] = val
+                keyval_args[no_underscore] = val
             elif isinstance(val, bool):
                 if val:
-                    self._bool_args.append(key)
+                    bool_args.append(key)
                 else:
                     # must not include in the output
                     continue
             else:
-                self._keyval_args[key] = val
+                new_kwargs[key] = val
+                keyval_args[key] = val
 
-        super().__init__(**kwargs)
+        return new_kwargs, keyval_args, bool_args
+
+    def replace(self, **kwargs):
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().replace(**converted)
+
+    def append(self, **kwargs):
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().append(**converted)
 
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
