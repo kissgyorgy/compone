@@ -219,3 +219,7 @@ def _Elem(html_tag):
 def _SelfElem(html_tag):
     """Create Component from self-closing HTML element on the fly."""
     return _HtmlElem(html_tag, _SelfClosingHTMLComponent)
+
+
+def _SimpleElem(html_tag):
+    return _HtmlElem(html_tag, _SimpleHTMLComponent)
