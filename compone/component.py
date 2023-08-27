@@ -181,12 +181,6 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
         return safe(f"<{self.html_tag}{attributes} />")
 
 
-class _SimpleHTMLComponent(_HTMLComponentBase):
-    def __str__(self):
-        attributes = self._get_attributes()
-        return safe(f"<{self.html_tag}{attributes}>")
-
-
 def Component(func):
     argspec = inspect.getfullargspec(func)
     if argspec.args:
@@ -219,7 +213,3 @@ def _Elem(html_tag):
 def _SelfElem(html_tag):
     """Create Component from self-closing HTML element on the fly."""
     return _HtmlElem(html_tag, _SelfClosingHTMLComponent)
-
-
-def _SimpleElem(html_tag):
-    return _HtmlElem(html_tag, _SimpleHTMLComponent)
