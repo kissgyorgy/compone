@@ -126,13 +126,12 @@ class _HTMLComponentBase(_ComponentBase):
         super().__init__(**new_kwargs)
 
     def _convert_kwargs(self, kwargs):
-        new_kwargs = kwargs.copy()
+        new_kwargs = {}
         keyval_args = {}
         bool_args = []
 
         for key, val in kwargs.items():
             if key in {"class_", "for_", "is_"}:
-                new_kwargs.pop(key)
                 no_underscore = key[:-1]
                 new_kwargs[no_underscore] = val
                 keyval_args[no_underscore] = val
