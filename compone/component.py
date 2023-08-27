@@ -15,7 +15,7 @@ class _ComponentBase:
 
     def __repr__(self):
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
-        return f"<{self.func.__name__}({kwargs})>"
+        return f"<{self.__class__.__name__}({kwargs})>"
 
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
