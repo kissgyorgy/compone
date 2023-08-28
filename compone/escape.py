@@ -28,6 +28,9 @@ def escape(s):
         return safe("")
     elif not isinstance(s, str):
         s = str(s)
+        # __str__ method on the object returned safe
+        if isinstance(s, safe):
+            return s
 
     s = s.replace("&", "&amp;")  # Must be done first!
     s = s.replace("<", "&lt;")
