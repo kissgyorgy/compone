@@ -9,6 +9,17 @@ class _ComponentBase:
     def __init__(self, **kwargs):
         self._kwargs = kwargs
 
+    def replace(self, **kwargs):
+        return self._merge(kwargs)
+
+    def append(self, **kwargs):
+        appended = {}
+        for key, val in kwargs.items():
+            if key in self._kwargs:
+                val = self._kwargs[key] + val
+            appended[key] = val
+        return self._merge(appended)
+
     def __repr__(self):
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         return f"<{self.__class__.__name__}({kwargs})>"
@@ -36,17 +47,6 @@ class _ComponentBase:
             )
         return self._merge(kwargs)
 
-    def replace(self, **kwargs):
-        return self._merge(kwargs)
-
-    def append(self, **kwargs):
-        appended = {}
-        for key, val in kwargs.items():
-            if key in self._kwargs:
-                val = self._kwargs[key] + val
-            appended[key] = val
-        return self._merge(appended)
-
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
     def __class_getitem__(cls, key):
@@ -65,7 +65,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
 
         escaped_children = self._escape(children)
         safe_children = safe("".join(escaped_children))
-        return self.render(safe_children)
+        return self._render(safe_children)
 
     def _escape(self, children):
         escaped_children = []
@@ -77,18 +77,15 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
 
     def __str__(self):
         # not called through __getitem__, so there is no children
-        return self.render(None)
+        return self._render(None)
 
     @abc.abstractmethod
-    def render(self, children) -> safe:
+    def _render(self, children) -> safe:
         ...
 
 
 class _Component(_ComponentBase, _ChildrenMixin):
-    func: Callable
-    pass_children: bool
 
-    def render(self, children) -> safe:
         if self.pass_children:
             kwargs = {**self._kwargs, "children": children}
         else:
@@ -97,6 +94,7 @@ class _Component(_ComponentBase, _ChildrenMixin):
 
         # self.func is unbound
         content = self.__class__.func(**kwargs)
+        content = self.get_content(children)
 
         if isinstance(content, safe):
             return content
@@ -113,17 +111,27 @@ class _Component(_ComponentBase, _ChildrenMixin):
             # content is not str here
             return safe("\n".join(self._escape(content)))
 
+    _func: Callable
+    _pass_children: bool
 
 class _HTMLComponentBase(_ComponentBase):
-    html_tag: str
-    attributes = None
+    _html_tag: str
+    _attributes = None
 
     def __init__(self, **kwargs):
-        if self.attributes is not None:
-            kwargs.update(self.attributes)
+        if self._attributes is not None:
+            kwargs.update(self._attributes)
 
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
+
+    def replace(self, **kwargs):
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().replace(**converted)
+
+    def append(self, **kwargs):
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().append(**converted)
 
     def _convert_kwargs(self, kwargs):
         new_kwargs = {}
@@ -147,14 +155,6 @@ class _HTMLComponentBase(_ComponentBase):
 
         return new_kwargs, keyval_args, bool_args
 
-    def replace(self, **kwargs):
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().replace(**converted)
-
-    def append(self, **kwargs):
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().append(**converted)
-
     def _get_attributes(self):
         conv = lambda s: escape(str(s).replace("_", "-"))
         bool_args = " ".join(conv(a) for a in self._bool_args)
@@ -167,17 +167,17 @@ class _HTMLComponentBase(_ComponentBase):
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
-    def render(self, children):
+    def _render(self, children):
         if not children:
             children = ""
         attributes = self._get_attributes()
-        return safe(f"<{self.html_tag}{attributes}>{children}</{self.html_tag}>")
+        return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self):
         attributes = self._get_attributes()
-        return safe(f"<{self.html_tag}{attributes} />")
+        return safe(f"<{self._html_tag}{attributes} />")
 
 
 def Component(func):
@@ -192,7 +192,11 @@ def Component(func):
     return type(
         func.__name__,
         (_Component,),
-        dict(func=func, pass_children=pass_children, __module__=func.__module__),
+        dict(
+            _func=func,
+            _pass_children=pass_children,
+            __module__=func.__module__,
+        ),
     )
 
 
@@ -200,7 +204,10 @@ def _HtmlElem(html_tag, parent_class):
     return type(
         html_tag.capitalize(),
         (parent_class,),
-        dict(html_tag=html_tag, __module__="compone.html"),
+        dict(
+            _html_tag=html_tag,
+            __module__="compone.html",
+        ),
     )
 
 
