@@ -29,8 +29,8 @@ class _ListComp(_HTMLComponent):
 
 
 class Ul(_ListComp):
-    html_tag = "ul"
+    _html_tag = "ul"
 
 
 class Ol(_ListComp):
-    html_tag = "ol"
+    _html_tag = "ol"

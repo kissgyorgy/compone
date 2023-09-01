@@ -84,17 +84,9 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class _Component(_ComponentBase, _ChildrenMixin):
-
-        if self.pass_children:
-            kwargs = {**self._kwargs, "children": children}
-        else:
-            # should be okay not to copy
-            kwargs = self._kwargs
-
-        # self.func is unbound
-        content = self.__class__.func(**kwargs)
-        content = self.get_content(children)
+class _ContentMixin(metaclass=abc.ABCMeta):
+    def _render(self, children):
+        content = self._get_content(children)
 
         if isinstance(content, safe):
             return content
@@ -111,8 +103,40 @@ class _Component(_ComponentBase, _ChildrenMixin):
             # content is not str here
             return safe("\n".join(self._escape(content)))
 
+    @abc.abstractmethod
+    def _get_content(self, children):
+        ...
+
+
+class _FuncComponent(_ComponentBase, _ChildrenMixin, _ContentMixin):
     _func: Callable
     _pass_children: bool
+
+    def _get_content(self, children) -> safe:
+        if self._pass_children:
+            kwargs = {**self._kwargs, "children": children}
+        else:
+            # should be okay not to copy
+            kwargs = self._kwargs
+
+        # self.func is unbound
+        content = self.__class__._func(**kwargs)
+        return content
+
+
+class _ClassComponent(_ComponentBase, _ChildrenMixin, _ContentMixin):
+    _pass_children: bool
+
+    @abc.abstractmethod
+    def render(self):
+        ...
+
+    def _get_content(self, children):
+        if self._pass_children:
+            return self.render(children)
+        else:
+            return self.render()
+
 
 class _HTMLComponentBase(_ComponentBase):
     _html_tag: str
@@ -180,24 +204,54 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
         return safe(f"<{self._html_tag}{attributes} />")
 
 
-def Component(func):
-    argspec = inspect.getfullargspec(func)
-    if argspec.args:
-        raise TypeError(
-            "Components must only have keyword arguments!\n           "
-            f"Found positional arguments: {argspec.args} in {func.__name__}"
-        )
+def Component(func_or_class):
+    if inspect.isfunction(func_or_class):
+        return _make_func_component(func_or_class)
+    elif inspect.isclass(func_or_class):
+        return _make_class_component(func_or_class)
+    else:
+        raise TypeError("Components can only be classes or functions")
 
+
+def _make_class_component(user_class):
+    init_argspec = inspect.getfullargspec(user_class.__init__)
+    init_argspec.args.remove("self")
+    _check_argspec(init_argspec, user_class.__name__)
+    render_argspec = inspect.getfullargspec(user_class.render)
+    pass_children = "children" in (render_argspec.args + render_argspec.kwonlyargs)
+    return type(
+        user_class.__name__,
+        (_ClassComponent,),
+        dict(
+            **user_class.__dict__,
+            _pass_children=pass_children,
+        ),
+    )
+
+
+def _make_func_component(func):
+    argspec = inspect.getfullargspec(func)
+    _check_argspec(argspec, func.__name__)
     pass_children = "children" in argspec.kwonlyargs
     return type(
         func.__name__,
-        (_Component,),
+        (_FuncComponent,),
         dict(
             _func=func,
             _pass_children=pass_children,
             __module__=func.__module__,
         ),
     )
+
+
+def _check_argspec(argspec, name):
+    if argspec.args:
+        arglist = ", ".join(argspec.args)
+        raise TypeError(
+            "Components must only have keyword arguments!\n"
+            "           Found positional arguments: "
+            f"{arglist} in {name}.__init__"
+        )
 
 
 def _HtmlElem(html_tag, parent_class):
