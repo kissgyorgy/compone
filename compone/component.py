@@ -108,7 +108,7 @@ class _ContentMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class _FuncComponent(_ComponentBase, _ChildrenMixin, _ContentMixin):
+class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _func: Callable
     _pass_children: bool
 
@@ -124,7 +124,7 @@ class _FuncComponent(_ComponentBase, _ChildrenMixin, _ContentMixin):
         return content
 
 
-class _ClassComponent(_ComponentBase, _ChildrenMixin, _ContentMixin):
+class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _pass_children: bool
 
     @abc.abstractmethod
@@ -190,7 +190,7 @@ class _HTMLComponentBase(_ComponentBase):
         return bool_args + kv_args
 
 
-class _HTMLComponent(_HTMLComponentBase, _ChildrenMixin):
+class _HTMLComponent(_ChildrenMixin, _HTMLComponentBase):
     def _render(self, children):
         if not children:
             children = ""
