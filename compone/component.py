@@ -1,5 +1,6 @@
 import abc
 import inspect
+from functools import cached_property
 from typing import Callable
 
 from .escape import escape, safe
@@ -126,16 +127,17 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
 
 class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _pass_children: bool
+    _user_class: object
 
-    @abc.abstractmethod
-    def render(self):
-        ...
+    @cached_property
+    def _user_instance(self):
+        return self._user_class(**self._kwargs)
 
     def _get_content(self, children):
         if self._pass_children:
-            return self.render(children)
+            return self._user_instance.render(children)
         else:
-            return self.render()
+            return self._user_instance.render()
 
 
 class _HTMLComponentBase(_ComponentBase):
@@ -214,6 +216,9 @@ def Component(func_or_class):
 
 
 def _make_class_component(user_class):
+    if not hasattr(user_class, "render"):
+        raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
+
     init_argspec = inspect.getfullargspec(user_class.__init__)
     init_argspec.args.remove("self")
     _check_argspec(init_argspec, user_class.__name__)
@@ -223,8 +228,9 @@ def _make_class_component(user_class):
         user_class.__name__,
         (_ClassComponent,),
         dict(
-            **user_class.__dict__,
+            _user_class=user_class,
             _pass_children=pass_children,
+            __module__=user_class.__module__,
         ),
     )
 
