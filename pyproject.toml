@@ -12,6 +12,7 @@ python = "^3.8"
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
 ruff = "^0.0.287"
+pytest-sugar = "^0.9.7"
 
 [tool.ruff]
 select = [

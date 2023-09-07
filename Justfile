@@ -1,2 +1,7 @@
+pytest := "python -m pytest --pdb -vv tests/"
+
 watchtests:
-    watchexec --restart --exts py -- python -m pytest --pdb -vv
+    watchexec --restart --exts py -- {{ pytest }}
+
+test:
+    {{ pytest }}
