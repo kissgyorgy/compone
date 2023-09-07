@@ -36,3 +36,25 @@ def test_nested_html_escaped():
         "&lt;script&gt;alert(&quot;pwned&quot;)&lt;/script&gt;"
         "pear</body>"
     )
+
+
+def test_nested_same_level_multiple():
+    with html.Body() as body:
+        body += "carrot"
+
+        with html.Div() as div:
+            div += "radish"
+
+        with html.Div() as div2:
+            div2 += "hazelnut"
+
+        body += "pear"
+
+    body_str = str(body)
+    assert isinstance(body_str, safe)
+    assert (
+        body_str == "<body>carrot"
+        "<div>radish</div>"
+        "<div>hazelnut</div>"
+        "pear</body>"
+    )

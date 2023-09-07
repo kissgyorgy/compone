@@ -74,6 +74,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._parent is not None:
             self._parent._children.append(self)
+        last_parent.set(self._parent)
 
     def __iadd__(self, other):
         self._children.append(other)
