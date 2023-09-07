@@ -1,9 +1,12 @@
 import abc
 import inspect
+from contextvars import ContextVar
 from functools import cached_property
 from typing import Callable
 
 from .escape import escape, safe
+
+last_parent = ContextVar("last_parent", default=None)
 
 
 class _ComponentBase:
@@ -50,6 +53,23 @@ class _ComponentBase:
 
 
 class _ChildrenMixin(metaclass=abc.ABCMeta):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._children = []
+
+    def __enter__(self):
+        self._parent = last_parent.get()
+        last_parent.set(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._parent is not None:
+            self._parent._children.append(self)
+
+    def __iadd__(self, other):
+        self._children.append(other)
+        return self
+
     def __class_getitem__(cls, key):
         return cls()[key]
 
@@ -65,8 +85,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
                 children = (children,)
 
         escaped_children = self._escape(children)
-        safe_children = safe("".join(escaped_children))
-        return self._render(safe_children)
+        return self._render(escaped_children)
 
     def _escape(self, children):
         escaped_children = []
@@ -77,8 +96,8 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         return escaped_children
 
     def __str__(self):
-        # not called through __getitem__, so there is no children
-        return self._render(None)
+        escaped_children = self._escape(self._children)
+        return self._render(escaped_children)
 
     @abc.abstractmethod
     def _render(self, children) -> safe:
@@ -196,6 +215,8 @@ class _HTMLComponent(_ChildrenMixin, _HTMLComponentBase):
     def _render(self, children):
         if not children:
             children = ""
+        # childrens should be escaped at this point
+        children = safe("".join(children))
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
 
