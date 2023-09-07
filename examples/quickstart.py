@@ -1,19 +1,18 @@
-from pycomp import Component
-from pycomp import html as h
+from compone import Component, html
 
 
 @Component
 def Layout(title: str, children: str):
-    return h.Html[
-        h.Head[h.Title[title],],
-        h.Body[children],
+    return html.Html[
+        html.Head[html.Title[title],],
+        html.Body[children],
     ]
 
 
 @Component
 def UnordList(elems: list, children: str):
-    li_elems = (h.Li[elem] for elem in elems)
-    return h.Ul[li_elems]
+    li_elems = (html.Li[elem] for elem in elems)
+    return html.Ul[li_elems]
 
 
 def main():
@@ -21,31 +20,30 @@ def main():
     title = "Page title"
 
     return Layout(title=title)[
-        h.P[title],
+        html.P[title],
         "<div>HTML string</div>",
-        h.Ul[
-            h.Li["first elem"],
-            h.Li["second elem"],
+        html.Ul[
+            html.Li["first elem"],
+            html.Li["second elem"],
         ],
-        h.Hr,
+        html.Hr,
         UnordList(names),
-        h.Div[
-            h.H1[title],
-            h.H2["title2"],
-            h.H3["title3"],
-            h.H4["title4"],
-            h.H5["title5"],
-            h.P["paragraph"],
+        html.Div[
+            html.H1[title],
+            html.H2["title2"],
+            html.H3["title3"],
+            html.H4["title4"],
+            html.H5["title5"],
+            html.P["paragraph"],
             # these two are the same
             "<br>",
-            h.Br,
+            html.Br,
         ],
-        h.Div[
-            h.P["first paragraph"],
-            h.P["second paragraph"],
+        html.Div[
+            html.P["first paragraph"],
+            html.P["second paragraph"],
         ],
     ]
 
 
-# print(repr(main()))
 print(main())

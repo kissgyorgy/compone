@@ -1,32 +1,31 @@
 import datetime as dt
 
-from pycomp import Component
-from pycomp import html as h
+from compone import Component, html
 
 count = 0
 
 
 @Component
 def Header():
-    return h.Div[
-        h.Center["Welcome to my page",],
-        h.Hr,
+    return html.Div[
+        html.Center["Welcome to my page",],
+        html.Hr,
     ]
 
 
 @Component
 def Footer():
-    return h.Div[
-        h.Hr,
-        h.Center["Created by Walkman"],
+    return html.Div[
+        html.Hr,
+        html.Center["Created by Walkman"],
     ]
 
 
 @Component
 def Layout(title: str = "Welcome to my page", *, children: str):
-    return h.Html[
-        h.Head[h.Title[title],],
-        h.Body[
+    return html.Html[
+        html.Head[html.Title[title],],
+        html.Body[
             Header,
             children,
             Footer,
@@ -35,10 +34,10 @@ def Layout(title: str = "Welcome to my page", *, children: str):
 
 
 @Component
-def Created(date: dt.datetime, children: str):
-    return h.P[
+def Created(date: dt.datetime):
+    return html.P[
         "Page created at:",
-        h.B[date.strftime("%Y-%m-%d %H:%M:%S")],
+        html.B[date.strftime("%Y-%m-%d %H:%M:%S"),],
     ]
 
 
@@ -46,8 +45,8 @@ def Created(date: dt.datetime, children: str):
 def Page(title: str, created_at: dt.datetime, children: str):
     created = Created(created_at)
     return Layout(title)[
-        h.H1[title],
-        h.Article[
+        html.H1[title],
+        html.Article[
             created,
             children,
             created,
@@ -56,8 +55,12 @@ def Page(title: str, created_at: dt.datetime, children: str):
 
 
 @Component
-def Counter(children: str):
+def Counter():
     global count
     count += 1
-    content = h.P["This page has been viewed", h.Strong[count], "times"]
+    content = html.P[
+        "This page has been viewed",
+        html.Strong[count],
+        "times",
+    ]
     return content
