@@ -9,9 +9,24 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.8"
 
-
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
+ruff = "^0.0.287"
+
+[tool.ruff]
+select = [
+    "E",   # pycodestyle error
+    "F",   # pyflakes
+    "W",   # pycodestyle warning like tab-indentation, trailing-whitespace
+    "C90", # mccabe code complexity
+    "I",   # isort
+]
+ignore = [
+    "E731", # Do not assign a lambda expression, use a def
+]
+
+[tool.ruff.mccabe]
+max-complexity = 5
 
 [build-system]
 requires = ["poetry-core"]

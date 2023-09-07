@@ -2,11 +2,20 @@ import abc
 import inspect
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Callable
+from typing import Callable, Generic, Tuple, Type, TypeVar, Union
 
 from .escape import escape, safe
 
 last_parent = ContextVar("last_parent", default=None)
+
+
+def _is_iterable(content):
+    try:
+        iter(content)
+    except TypeError:
+        return False
+    else:
+        return True
 
 
 class _ComponentBase:
@@ -74,15 +83,13 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         return cls()[key]
 
     def __getitem__(self, children):
-        try:
-            iter(children)
-        except TypeError:
-            children = (children,)
-        else:
+        if _is_iterable(children):
             # str is a special case, because it's an iterator too
             # _ChildrenMixins are also iterators because of this very method
             if isinstance(children, (str, safe, _ChildrenMixin)):
                 children = (children,)
+        else:
+            children = (children,)
 
         escaped_children = self._escape(children)
         safe_children = safe("\n".join(escaped_children))
@@ -117,14 +124,12 @@ class _ContentMixin(metaclass=abc.ABCMeta):
         elif isinstance(content, str):
             return escape(content)
 
-        try:
-            iter(content)
-        except TypeError:
-            return escape(content)
-        else:
+        if _is_iterable(content):
             # content is not str here
             escaped = self._escape(content)
             return safe("\n".join(escaped))
+        else:
+            return escape(content)
 
     @abc.abstractmethod
     def _get_content(self, children: safe):
@@ -147,12 +152,15 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
         return content
 
 
-class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
+U = TypeVar("U")
+
+
+class _ClassComponent(Generic[U], _ContentMixin, _ChildrenMixin, _ComponentBase):
     _pass_children: bool
-    _user_class: object
+    _user_class: Type[U]
 
     @cached_property
-    def _user_instance(self):
+    def _user_instance(self) -> U:
         return self._user_class(**self._kwargs)
 
     def _get_content(self, children: safe):
@@ -173,15 +181,15 @@ class _HTMLComponentBase(_ComponentBase):
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> _ComponentBase:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().replace(**converted)
 
-    def append(self, **kwargs):
+    def append(self, **kwargs) -> _ComponentBase:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().append(**converted)
 
-    def _convert_kwargs(self, kwargs):
+    def _convert_kwargs(self, kwargs) -> Tuple[dict, dict, list]:
         new_kwargs = {}
         keyval_args = {}
         bool_args = []
@@ -203,7 +211,7 @@ class _HTMLComponentBase(_ComponentBase):
 
         return new_kwargs, keyval_args, bool_args
 
-    def _get_attributes(self):
+    def _get_attributes(self) -> str:
         conv = lambda s: escape(str(s).replace("_", "-"))
         bool_args = " ".join(conv(a) for a in self._bool_args)
         bool_args = " " + bool_args if bool_args else ""
@@ -228,7 +236,9 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
         return safe(f"<{self._html_tag}{attributes} />")
 
 
-def Component(func_or_class):
+def Component(
+    func_or_class: Union[type, Callable]
+) -> Union[_ClassComponent, _FuncComponent]:
     if inspect.isfunction(func_or_class):
         return _make_func_component(func_or_class)
     elif inspect.isclass(func_or_class):
@@ -237,7 +247,7 @@ def Component(func_or_class):
         raise TypeError("Components can only be classes or functions")
 
 
-def _make_class_component(user_class):
+def _make_class_component(user_class: type) -> _ClassComponent:
     if not hasattr(user_class, "render"):
         raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
 
@@ -257,7 +267,7 @@ def _make_class_component(user_class):
     )
 
 
-def _make_func_component(func):
+def _make_func_component(func: Callable) -> _FuncComponent:
     argspec = inspect.getfullargspec(func)
     _check_argspec(argspec, func.__name__)
     pass_children = "children" in argspec.kwonlyargs
@@ -272,7 +282,7 @@ def _make_func_component(func):
     )
 
 
-def _check_argspec(argspec, name):
+def _check_argspec(argspec: inspect.FullArgSpec, name: str):
     if argspec.args:
         arglist = ", ".join(argspec.args)
         raise TypeError(
@@ -282,7 +292,10 @@ def _check_argspec(argspec, name):
         )
 
 
-def _HtmlElem(html_tag, parent_class):
+T = TypeVar("T")
+
+
+def _HtmlElem(html_tag: str, parent_class: T) -> T:
     return type(
         html_tag.capitalize(),
         (parent_class,),
@@ -293,11 +306,11 @@ def _HtmlElem(html_tag, parent_class):
     )
 
 
-def _Elem(html_tag):
+def _Elem(html_tag: str) -> _HTMLComponent:
     """Create Component from HTML element on the fly."""
     return _HtmlElem(html_tag, _HTMLComponent)
 
 
-def _SelfElem(html_tag):
+def _SelfElem(html_tag: str) -> _SelfClosingHTMLComponent:
     """Create Component from self-closing HTML element on the fly."""
     return _HtmlElem(html_tag, _SelfClosingHTMLComponent)

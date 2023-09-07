@@ -32,6 +32,7 @@ def test_nested_html_escaped():
     body_str = str(body)
     assert isinstance(body_str, safe)
     assert (
-        body_str
-        == "<body>carrot&lt;script&gt;alert(&quot;pwned&quot;)&lt;/script&gt;pear</body>"
+        body_str == "<body>carrot"
+        "&lt;script&gt;alert(&quot;pwned&quot;)&lt;/script&gt;"
+        "pear</body>"
     )
