@@ -92,7 +92,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
             children = (children,)
 
         escaped_children = self._escape(children)
-        safe_children = safe("\n".join(escaped_children))
+        safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
 
     def _escape(self, children):
@@ -105,7 +105,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
 
     def __str__(self):
         escaped_children = self._escape(self._children)
-        safe_children = safe("\n".join(escaped_children))
+        safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
 
     @abc.abstractmethod
@@ -127,7 +127,7 @@ class _ContentMixin(metaclass=abc.ABCMeta):
         if _is_iterable(content):
             # content is not str here
             escaped = self._escape(content)
-            return safe("\n".join(escaped))
+            return safe("".join(escaped))
         else:
             return escape(content)
 
