@@ -85,7 +85,8 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
                 children = (children,)
 
         escaped_children = self._escape(children)
-        return self._render(escaped_children)
+        safe_children = safe("\n".join(escaped_children))
+        return self._render(safe_children)
 
     def _escape(self, children):
         escaped_children = []
@@ -97,15 +98,16 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
 
     def __str__(self):
         escaped_children = self._escape(self._children)
-        return self._render(escaped_children)
+        safe_children = safe("\n".join(escaped_children))
+        return self._render(safe_children)
 
     @abc.abstractmethod
-    def _render(self, children) -> safe:
+    def _render(self, children: safe) -> safe:
         ...
 
 
 class _ContentMixin(metaclass=abc.ABCMeta):
-    def _render(self, children):
+    def _render(self, children: safe):
         content = self._get_content(children)
 
         if isinstance(content, safe):
@@ -121,10 +123,11 @@ class _ContentMixin(metaclass=abc.ABCMeta):
             return escape(content)
         else:
             # content is not str here
-            return safe("\n".join(self._escape(content)))
+            escaped = self._escape(content)
+            return safe("\n".join(escaped))
 
     @abc.abstractmethod
-    def _get_content(self, children):
+    def _get_content(self, children: safe):
         ...
 
 
@@ -132,7 +135,7 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _func: Callable
     _pass_children: bool
 
-    def _get_content(self, children) -> safe:
+    def _get_content(self, children: safe) -> safe:
         if self._pass_children:
             kwargs = {**self._kwargs, "children": children}
         else:
@@ -152,7 +155,7 @@ class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     def _user_instance(self):
         return self._user_class(**self._kwargs)
 
-    def _get_content(self, children):
+    def _get_content(self, children: safe):
         if self._pass_children:
             return self._user_instance.render(children)
         else:
@@ -205,24 +208,22 @@ class _HTMLComponentBase(_ComponentBase):
         bool_args = " ".join(conv(a) for a in self._bool_args)
         bool_args = " " + bool_args if bool_args else ""
         kv_args = " ".join(
-            safe(f'{conv(k)}="{escape(v)}"') for k, v in self._keyval_args.items()
+            f'{conv(k)}="{escape(v)}"' for k, v in self._keyval_args.items()
         )
         kv_args = " " + kv_args if kv_args else ""
         return bool_args + kv_args
 
 
 class _HTMLComponent(_ChildrenMixin, _HTMLComponentBase):
-    def _render(self, children):
+    def _render(self, children: safe) -> safe:
         if not children:
             children = ""
-        # childrens should be escaped at this point
-        children = safe("".join(children))
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
 
 
 class _SelfClosingHTMLComponent(_HTMLComponentBase):
-    def __str__(self):
+    def __str__(self) -> safe:
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes} />")
 
