@@ -2,30 +2,33 @@ import abc
 import inspect
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Callable, Generic, Tuple, Type, TypeVar, Union
+from typing import Callable, Iterable, List, Protocol, Tuple, Type, TypeVar, Union
 
 from .escape import escape, safe
+from .utils import _is_iterable
 
 last_parent = ContextVar("last_parent", default=None)
 
+T = TypeVar("T")
+CompSelf = TypeVar("CompSelf", bound="_ComponentBase")
+ChildSelf = TypeVar("ChildSelf", bound="_ChildrenMixin")
+StrType = Union[str, safe]
+ContentType = Union[StrType, CompSelf]
 
-def _is_iterable(content):
-    try:
-        iter(content)
-    except TypeError:
-        return False
-    else:
-        return True
+
+class ComponentClass(Protocol):
+    def render(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
+        ...
 
 
 class _ComponentBase:
     def __init__(self, **kwargs):
         self._kwargs = kwargs
 
-    def replace(self, **kwargs):
+    def replace(self, **kwargs) -> CompSelf:
         return self._merge(kwargs)
 
-    def append(self, **kwargs):
+    def append(self, **kwargs) -> CompSelf:
         appended = {}
         for key, val in kwargs.items():
             if key in self._kwargs:
@@ -37,7 +40,7 @@ class _ComponentBase:
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         return f"<{self.__class__.__name__}({kwargs})>"
 
-    def __mul__(self, other):
+    def __mul__(self, other: int) -> CompSelf:
         if not isinstance(other, int):
             return NotImplemented
 
@@ -47,11 +50,11 @@ class _ComponentBase:
         Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
         return Multiple()
 
-    def _merge(self, kwargs):
+    def _merge(self, kwargs) -> CompSelf:
         merged_kwargs = {**self._kwargs, **kwargs}
         return self.__class__(**merged_kwargs)
 
-    def __call__(self, **kwargs):
+    def __call__(self, **kwargs) -> CompSelf:
         if overlapping := [key for key in kwargs if key in self._kwargs]:
             overlapping_keys = ", ".join(overlapping)
             raise KeyError(
@@ -66,7 +69,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         super().__init__(**kwargs)
         self._children = []
 
-    def __enter__(self):
+    def __enter__(self) -> ChildSelf:
         self._parent = last_parent.get()
         last_parent.set(self)
         return self
@@ -76,14 +79,14 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
             self._parent._children.append(self)
         last_parent.set(self._parent)
 
-    def __iadd__(self, other):
+    def __iadd__(self, other) -> ChildSelf:
         self._children.append(other)
         return self
 
-    def __class_getitem__(cls, key):
+    def __class_getitem__(cls, key) -> ChildSelf:
         return cls()[key]
 
-    def __getitem__(self, children):
+    def __getitem__(self, children) -> safe:
         if _is_iterable(children):
             # str is a special case, because it's an iterator too
             # _ChildrenMixins are also iterators because of this very method
@@ -96,7 +99,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
 
-    def _escape(self, children):
+    def _escape(self, children) -> List[safe]:
         escaped_children = []
         for ch in children:
             is_component = isinstance(ch, _ComponentBase)
@@ -104,7 +107,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
             escaped_children.append(safe_ch)
         return escaped_children
 
-    def __str__(self):
+    def __str__(self) -> safe:
         escaped_children = self._escape(self._children)
         safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
@@ -115,7 +118,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
 
 
 class _ContentMixin(metaclass=abc.ABCMeta):
-    def _render(self, children: safe):
+    def _render(self, children: safe) -> safe:
         content = self._get_content(children)
 
         if isinstance(content, safe):
@@ -124,16 +127,14 @@ class _ContentMixin(metaclass=abc.ABCMeta):
             return safe(content)
         elif isinstance(content, str):
             return escape(content)
-
-        if _is_iterable(content):
-            # content is not str here
+        elif _is_iterable(content):
             escaped = self._escape(content)
             return safe("".join(escaped))
         else:
             return escape(content)
 
     @abc.abstractmethod
-    def _get_content(self, children: safe):
+    def _get_content(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
         ...
 
 
@@ -141,7 +142,7 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _func: Callable
     _pass_children: bool
 
-    def _get_content(self, children: safe) -> safe:
+    def _get_content(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
         if self._pass_children:
             kwargs = {**self._kwargs, "children": children}
         else:
@@ -153,15 +154,12 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
         return content
 
 
-U = TypeVar("U")
-
-
-class _ClassComponent(Generic[U], _ContentMixin, _ChildrenMixin, _ComponentBase):
+class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
     _pass_children: bool
-    _user_class: Type[U]
+    _user_class: ComponentClass
 
     @cached_property
-    def _user_instance(self) -> U:
+    def _user_instance(self) -> ComponentClass:
         return self._user_class(**self._kwargs)
 
     def _get_content(self, children: safe):
@@ -182,11 +180,11 @@ class _HTMLComponentBase(_ComponentBase):
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
 
-    def replace(self, **kwargs) -> _ComponentBase:
+    def replace(self, **kwargs) -> CompSelf:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().replace(**converted)
 
-    def append(self, **kwargs) -> _ComponentBase:
+    def append(self, **kwargs) -> CompSelf:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().append(**converted)
 
@@ -238,8 +236,8 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
 
 
 def Component(
-    func_or_class: Union[type, Callable]
-) -> Union[_ClassComponent, _FuncComponent]:
+    func_or_class: Union[ComponentClass, Callable]
+) -> Union[Type[_ClassComponent], Type[_FuncComponent]]:
     if inspect.isfunction(func_or_class):
         return _make_func_component(func_or_class)
     elif inspect.isclass(func_or_class):
@@ -248,7 +246,7 @@ def Component(
         raise TypeError("Components can only be classes or functions")
 
 
-def _make_class_component(user_class: type) -> _ClassComponent:
+def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
     if not hasattr(user_class, "render"):
         raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
 
@@ -268,7 +266,7 @@ def _make_class_component(user_class: type) -> _ClassComponent:
     )
 
 
-def _make_func_component(func: Callable) -> _FuncComponent:
+def _make_func_component(func: Callable) -> Type[_FuncComponent]:
     argspec = inspect.getfullargspec(func)
     _check_argspec(argspec, func.__name__)
     pass_children = "children" in argspec.kwonlyargs
@@ -293,9 +291,6 @@ def _check_argspec(argspec: inspect.FullArgSpec, name: str):
         )
 
 
-T = TypeVar("T")
-
-
 def _HtmlElem(html_tag: str, parent_class: T) -> T:
     return type(
         html_tag.capitalize(),
@@ -307,11 +302,11 @@ def _HtmlElem(html_tag: str, parent_class: T) -> T:
     )
 
 
-def _Elem(html_tag: str) -> _HTMLComponent:
+def _Elem(html_tag: str) -> Type[_HTMLComponent]:
     """Create Component from HTML element on the fly."""
     return _HtmlElem(html_tag, _HTMLComponent)
 
 
-def _SelfElem(html_tag: str) -> _SelfClosingHTMLComponent:
+def _SelfElem(html_tag: str) -> Type[_SelfClosingHTMLComponent]:
     """Create Component from self-closing HTML element on the fly."""
     return _HtmlElem(html_tag, _SelfClosingHTMLComponent)

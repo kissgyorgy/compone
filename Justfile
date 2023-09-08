@@ -1,7 +1,10 @@
 pytest := "python -m pytest --pdb -vv tests/"
 
-watchtests:
-    watchexec --restart --exts py -- {{ pytest }}
+check:
+    ruff check .
 
 test:
     {{ pytest }}
+
+watchtests:
+    watchexec --restart --exts py -- {{ pytest }}
