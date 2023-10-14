@@ -108,6 +108,8 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         return escaped_children
 
     def __str__(self) -> safe:
+        if not self._children:
+            return self._render(safe(""))
         escaped_children = self._escape(self._children)
         safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
@@ -223,8 +225,6 @@ class _HTMLComponentBase(_ComponentBase):
 
 class _HTMLComponent(_ChildrenMixin, _HTMLComponentBase):
     def _render(self, children: safe) -> safe:
-        if not children:
-            children = ""
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
 
