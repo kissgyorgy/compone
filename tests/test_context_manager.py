@@ -1,4 +1,4 @@
-from compone import html, safe
+from compone import Component, html, safe
 
 
 def test_nested_html():
@@ -57,4 +57,26 @@ def test_nested_same_level_multiple():
         "<div>radish</div>"
         "<div>hazelnut</div>"
         "pear</body>"
+    )
+
+
+def test_separate_components():
+    @Component
+    def Main():
+        with html.Div(class_="outer") as div:
+            div += html.Div(class_="inner")[Span()]
+        return div
+
+    @Component
+    def Span():
+        with html.Span() as span:
+            span += "hazelnut"
+        return span
+
+    assert str(Main()) == (
+        '<div class="outer">'
+        '<div class="inner">'
+        "<span>hazelnut</span>"
+        "</div>"
+        "</div>"
     )

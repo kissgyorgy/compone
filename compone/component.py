@@ -7,7 +7,8 @@ from typing import Callable, Iterable, List, Protocol, Tuple, Type, TypeVar, Uni
 from .escape import escape, safe
 from .utils import _is_iterable
 
-last_parent = ContextVar("last_parent", default=None)
+# previous frame id (frame.f_back), parent object
+last_parent = ContextVar("last_parent", default=(None, None))
 
 T = TypeVar("T")
 CompSelf = TypeVar("CompSelf", bound="_ComponentBase")
@@ -70,14 +71,18 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         self._children = []
 
     def __enter__(self) -> ChildSelf:
-        self._parent = last_parent.get()
-        last_parent.set(self)
+        parent_frame_id, parent = last_parent.get()
+        self._parent_frame_id = parent_frame_id
+        self._parent = parent
+        current_frame_id = id(inspect.currentframe().f_back)
+        last_parent.set((current_frame_id, self))
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._parent is not None:
+        current_frame_id = id(inspect.currentframe().f_back)
+        if self._parent is not None and current_frame_id == self._parent_frame_id:
             self._parent._children.append(self)
-        last_parent.set(self._parent)
+        last_parent.set((self._parent_frame_id, self._parent))
 
     def __iadd__(self, other) -> ChildSelf:
         self._children.append(other)
