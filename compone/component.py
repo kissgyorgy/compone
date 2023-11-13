@@ -187,6 +187,10 @@ class _HTMLComponentBase(_ComponentBase):
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
 
+    def __call__(self, **kwargs) -> CompSelf:
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().__call__(**converted)
+
     def replace(self, **kwargs) -> CompSelf:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().replace(**converted)
