@@ -205,7 +205,7 @@ class _HTMLComponentBase(_ComponentBase):
         bool_args = []
 
         for key, val in kwargs.items():
-            if key in {"class_", "for_", "is_"}:
+            if key in {"class_", "for_", "is_", "async_"}:
                 no_underscore = key[:-1]
                 new_kwargs[no_underscore] = val
                 keyval_args[no_underscore] = val
