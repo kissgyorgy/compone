@@ -65,7 +65,7 @@ class _ComponentBase:
         return self._merge(kwargs)
 
 
-class _ChildrenMixin(metaclass=abc.ABCMeta):
+class _ChildrenMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._children = []
@@ -100,9 +100,7 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         else:
             children = (children,)
 
-        escaped_children = self._escape(children)
-        safe_children = safe("".join(escaped_children))
-        return self._render(safe_children)
+        return self.__render(children)
 
     def _escape(self, children) -> List[safe]:
         escaped_children = []
@@ -113,15 +111,14 @@ class _ChildrenMixin(metaclass=abc.ABCMeta):
         return escaped_children
 
     def __str__(self) -> safe:
-        if not self._children:
+        return self.__render(self._children)
+
+    def __render(self, children: safe) -> safe:
+        if not children:
             return self._render(safe(""))
-        escaped_children = self._escape(self._children)
+        escaped_children = self._escape(children)
         safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
-
-    @abc.abstractmethod
-    def _render(self, children: safe) -> safe:
-        ...
 
 
 class _ContentMixin(metaclass=abc.ABCMeta):
