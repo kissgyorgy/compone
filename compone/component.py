@@ -121,6 +121,30 @@ class _ChildrenMixin:
         return self._render(safe_children)
 
 
+class _LazyComponent(_ChildrenMixin, _ComponentBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._lazy = False
+
+    @property
+    def lazy(self) -> ChildSelf:
+        new = self()
+        new._lazy = True
+        return new
+
+    def __getitem__(self, children) -> safe:
+        if self._lazy:
+            if self._children:
+                # Not AttributeError because it would be confusing, for ex. when using hasattr.
+                # Also this is like a function call, so a ValueError makes sense
+                raise ValueError("Lazy component already has children")
+            else:
+                self._children = children
+                return self
+        else:
+            return super().__getitem__(children)
+
+
 class _ContentMixin(metaclass=abc.ABCMeta):
     def _render(self, children: safe) -> safe:
         content = self._get_content(children)
@@ -142,7 +166,7 @@ class _ContentMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
+class _FuncComponent(_ContentMixin, _LazyComponent):
     _func: Callable
     _pass_children: bool
 
@@ -158,7 +182,7 @@ class _FuncComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
         return content
 
 
-class _ClassComponent(_ContentMixin, _ChildrenMixin, _ComponentBase):
+class _ClassComponent(_ContentMixin, _LazyComponent):
     _pass_children: bool
     _user_class: ComponentClass
 
@@ -229,7 +253,7 @@ class _HTMLComponentBase(_ComponentBase):
         return bool_args + kv_args
 
 
-class _HTMLComponent(_ChildrenMixin, _HTMLComponentBase):
+class _HTMLComponent(_HTMLComponentBase, _LazyComponent):
     def _render(self, children: safe) -> safe:
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
