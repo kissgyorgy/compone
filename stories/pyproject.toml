@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.1.7"
+flask = "^3.0.2"
 
 
 [build-system]
