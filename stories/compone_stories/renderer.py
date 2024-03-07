@@ -63,8 +63,9 @@ class Renderer:
         self._process = None
 
     def start(self):
-        self._parent_conn, self._child_conn = mp.Pipe()
-        self._process = mp.Process(
+        ctx = mp.get_context("spawn")
+        self._parent_conn, self._child_conn = ctx.Pipe()
+        self._process = ctx.Process(
             target=start_process, args=(self._modules, self._child_conn)
         )
         self._process.daemon = True
