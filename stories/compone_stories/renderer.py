@@ -30,8 +30,13 @@ class _RenderProcess(SpawnProcess):
         self._init_stories()
 
         while self._running:
-            msg = self._conn.recv()
-            print("Got message", msg)
+            try:
+                msg = self._conn.recv()
+                print("Got message", msg)
+            # can happen when the parent process exits
+            # and the process is shut down
+            except EOFError:
+                break
 
             cmd, *args = msg
             if res := self._run_command(cmd, *args):
