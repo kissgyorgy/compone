@@ -10,16 +10,13 @@ packages = [{ include = "compone", from = "core" }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-compone-stories = { path = "./stories", optional = true }
-
-[tool.poetry.extras]
-stories = ["compone-stories"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0"
 ruff = "^0.1"
 pytest-sugar = "*"
 pytest-icdiff = "*"
+compone-stories = { path = "./stories", develop = true }
 
 [tool.ruff]
 select = [
