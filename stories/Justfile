@@ -1,0 +1,2 @@
+gencss:
+    bun x tailwindcss -i stories.css -o compone_stories/static/stories.css --watch
