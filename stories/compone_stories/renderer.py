@@ -2,6 +2,7 @@ import importlib
 import inspect
 import multiprocessing as mp
 from multiprocessing.context import SpawnProcess
+from operator import itemgetter
 
 from .stories import Story, is_story
 
@@ -55,8 +56,9 @@ class _RenderProcess(SpawnProcess):
             storymap = {story.get_name(): story for _, story in story_objects}
             all_stories.update(storymap)
 
-        print("Imported stories:", all_stories.keys())
-        self._stories = all_stories
+        stories = sorted(all_stories.items(), key=itemgetter(0))
+        self._stories = dict(stories)
+        print("Imported stories:", self._stories.keys())
 
     def _run_command(self, cmd, *args):
         if cmd == _Command.RENDER:
