@@ -63,8 +63,7 @@ class _RenderProcess(SpawnProcess):
     def _run_command(self, cmd, *args):
         if cmd == _Command.RENDER:
             story_name = args[0]
-            comp_obj = self._stories[story_name].component()
-            content = str(comp_obj)
+            content = self._stories[story_name].render()
             return content
         elif cmd == _Command.STORY_NAMES:
             story_names = list(self._stories.keys())
