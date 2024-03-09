@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "compone-cli"
+version = "0.1.0"
+description = "CLI interface for Compone"
+authors = ["György Kiss <kissgyorgy@me.com>"]
+license = "MIT"
+readme = "../README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+click = "^8.1.7"
+
+[tool.poetry.scripts]
+compone = 'compone_cli.cli:main'
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
