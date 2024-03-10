@@ -17,6 +17,7 @@ ruff = "^0.1"
 pytest-sugar = "*"
 pytest-icdiff = "*"
 compone-stories = { path = "./stories", develop = true }
+compone-cli = { path = "./cli", develop = true }
 
 [tool.ruff]
 select = [

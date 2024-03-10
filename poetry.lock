@@ -37,6 +37,22 @@ files = [
 ]
 
 [[package]]
+name = "compone-cli"
+version = "0.1.0"
+description = "CLI interface for Compone"
+optional = false
+python-versions = "^3.8"
+files = []
+develop = true
+
+[package.dependencies]
+click = "^8.1.7"
+
+[package.source]
+type = "directory"
+url = "cli"
+
+[[package]]
 name = "compone-stories"
 version = "0.1.0"
 description = "Storybook for Compone"
@@ -230,13 +246,13 @@ files = [
 
 [[package]]
 name = "packaging"
-version = "23.2"
+version = "24.0"
 description = "Core utilities for Python packages"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "packaging-23.2-py3-none-any.whl", hash = "sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7"},
-    {file = "packaging-23.2.tar.gz", hash = "sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5"},
+    {file = "packaging-24.0-py3-none-any.whl", hash = "sha256:2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5"},
+    {file = "packaging-24.0.tar.gz", hash = "sha256:eb82c5e3e56209074766e6885bb04b8c38a0c015d0a30036ebe7ece34c9989e9"},
 ]
 
 [[package]]
@@ -408,4 +424,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "a397b56ad2bb9739c0b478f7bb9dd38e1a1fd51ecf32568ce1a16327d5790856"
+content-hash = "dcafac90ba56ac075762ad916f6bfc001ccfcc30f84ef3a28571f4ff2e74b864"
