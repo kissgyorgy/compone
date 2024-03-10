@@ -5,6 +5,7 @@ from compone import safe
 from compone.component import _ComponentBase
 
 from .args import Arg
+REGISTERED_STORIES = {}
 
 
 class Story:
@@ -12,6 +13,13 @@ class Story:
     name: Optional[str] = None
     children: Any = None
     args: list[Arg] = []
+
+    @staticmethod
+    def register(*stories):
+        for story in stories:
+            REGISTERED_STORIES[story.get_name()] = story
+        # In case when used as decorator
+        return stories[0]
 
     @classmethod
     def get_name(cls) -> str:

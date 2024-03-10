@@ -1,10 +1,9 @@
 import importlib
-import inspect
 import multiprocessing as mp
 from multiprocessing.context import SpawnProcess
 from operator import itemgetter
 
-from .stories import Story, is_story
+from .stories import REGISTERED_STORIES, Story
 
 
 class _Command:
@@ -46,17 +45,12 @@ class _RenderProcess(SpawnProcess):
         print("_RenderProcess stopped.")
 
     def _init_stories(self) -> dict[str, Story]:
-        print("Got modules", self._module_names)
         importlib.invalidate_caches()
-        modules = [importlib.import_module(name) for name in self._module_names]
-
-        all_stories = {}
-        for mod in modules:
-            story_objects = inspect.getmembers(mod, predicate=is_story)
-            storymap = {story.get_name(): story for _, story in story_objects}
-            all_stories.update(storymap)
-
-        stories = sorted(all_stories.items(), key=itemgetter(0))
+        # TODO: use venusian for this?
+        for name in self._module_names:
+            # Import them for the side effect of Story.register()
+            importlib.import_module(name)
+        stories = sorted(REGISTERED_STORIES.items(), key=itemgetter(0))
         self._stories = dict(stories)
         print("Imported stories:", self._stories.keys())
 
