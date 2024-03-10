@@ -10,6 +10,7 @@ readme = "README.md"
 python = "^3.8"
 click = "^8.1.7"
 flask = "^3.0.2"
+gunicorn = "^21.2.0"
 
 [tool.poetry.plugins."compone.cli"]
 stories = "compone_stories.cli:stories"
