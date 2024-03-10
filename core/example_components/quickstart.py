@@ -16,7 +16,7 @@ def UnordList(elems: list, children: str):
 
 
 def main():
-    names = ["György", "Dóri1", "Dóri2"]
+    names = ["Walkman", "György", "Kiss"]
     title = "Page title"
 
     return Layout(title=title)[
