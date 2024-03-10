@@ -4,16 +4,15 @@ from typing import Any, Optional, Type
 from compone import safe
 from compone.component import _ComponentBase
 
-from .args import Arg
+from .components import StoryPage
 
 REGISTERED_STORIES = {}
 
 
 class Story:
     component: Type[_ComponentBase]
+    template: Type[_ComponentBase] = StoryPage
     title: Optional[str] = None
-    children: Any = None
-    args: list[Arg] = []
 
     @staticmethod
     def register(*stories):
@@ -28,10 +27,12 @@ class Story:
 
     @classmethod
     def render(cls) -> safe | _ComponentBase:
-        content = cls.component()
-        if cls.children:
-            content = content[cls.children]
-        return content
+        # FIXME?: if every component would be lazy by default, we might not need this
+        if inspect.isclass(cls.component) and issubclass(cls.component, _ComponentBase):
+            content = cls.component()
+        else:
+            content = cls.component
+        return cls.template[content]
 
 
 def is_story(obj: Any) -> bool:

@@ -22,6 +22,11 @@ def StoryFrame(*, children):
 
 
 @Component
+def StoryPage(*, children):
+    return html.Html[html.Body[children]]
+
+
+@Component
 def StoryProps(*, props):
     return html.Div[
         html.H2["Props"],
@@ -30,7 +35,7 @@ def StoryProps(*, props):
 
 
 @Component
-def Page(*, story_names, active_story, story_content):
+def AllStoriesPage(*, story_names, active_story, children):
     with html.Html(class_="m-4") as page:
         with html.Meta() as meta:
             css_url = url_for("static", filename="stories.css")
@@ -41,7 +46,7 @@ def Page(*, story_names, active_story, story_content):
         with html.Div(class_="grid grid-cols-[1fr_3fr] p-4 border-l") as grid:
             grid += StoryNav(story_names=story_names, active_story=active_story)
             with html.Div() as content:
-                content += StoryFrame[story_content]
+                content += StoryFrame[children]
                 content += StoryProps(props=None)
 
     return page

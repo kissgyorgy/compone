@@ -2,7 +2,7 @@ from compone.component import _ComponentBase
 from flask import Flask, Response, redirect, url_for
 from flask import typing as ft
 
-from .components import Page
+from .components import AllStoriesPage
 from .renderer import Renderer
 
 
@@ -27,11 +27,10 @@ def create_app(modules: list[str]):
     def story(story_name):
         story_names = renderer.story_names()
         story_content = renderer.render_story(story_name)
-        return Page(
+        return AllStoriesPage(
             story_names=story_names,
-            story_content=story_content,
             active_story=story_name,
-        )
+        )[story_content,]
 
     renderer.start()
 
