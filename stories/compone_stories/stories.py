@@ -5,12 +5,13 @@ from compone import safe
 from compone.component import _ComponentBase
 
 from .args import Arg
+
 REGISTERED_STORIES = {}
 
 
 class Story:
     component: Type[_ComponentBase]
-    name: Optional[str] = None
+    title: Optional[str] = None
     children: Any = None
     args: list[Arg] = []
 
@@ -23,7 +24,7 @@ class Story:
 
     @classmethod
     def get_name(cls) -> str:
-        return cls.name or cls.component.__name__
+        return cls.title or cls.component.__name__
 
     @classmethod
     def render(cls) -> safe | _ComponentBase:
