@@ -35,7 +35,7 @@ class _RenderProcess(SpawnProcess):
                 print("Got message", msg)
             # can happen when the parent process exits
             # and the process is shut down
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 break
 
             cmd, *args = msg
@@ -80,10 +80,26 @@ class Renderer:
         self._parent_conn, self._child_conn = None, None
         self._process = None
 
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    def restart(self):
+        # Don't close the pipe, it will be used for the new process
+        self._parent_conn.send([_Command.STOP])
+        self._process.join()
+        self._process.close()
+        self._process = _RenderProcess(self._modules, self._child_conn)
+        self._process.start()
+
     def start(self):
         self._parent_conn, self._child_conn = mp.Pipe()
         self._process = _RenderProcess(self._modules, self._child_conn)
         self._process.start()
+        print("Renderer started")
 
     def _run_command(self, command, *args):
         self._parent_conn.send([command, *args])
@@ -105,3 +121,4 @@ class Renderer:
 
         self._parent_conn, self._child_conn = None, None
         self._process = None
+        print("Renderer stopped")

@@ -1,3 +1,5 @@
+import multiprocessing as mp
+
 from compone.component import _ComponentBase
 from flask import Flask, Response, redirect, url_for
 from flask import typing as ft
@@ -14,9 +16,8 @@ class ComponentApp(Flask):
             return super().make_response(rv)
 
 
-def create_app(modules: list[str]):
+def create_app(renderer: Renderer) -> ComponentApp:
     app = ComponentApp("compone_stories")
-    renderer = Renderer(modules)
 
     @app.route("/")
     def index():
@@ -31,7 +32,5 @@ def create_app(modules: list[str]):
             story_names=story_names,
             active_story=story_name,
         )[story_content,]
-
-    renderer.start()
 
     return app
