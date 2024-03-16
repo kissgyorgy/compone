@@ -12,6 +12,7 @@ click = "^8.1.7"
 flask = "^3.0.2"
 gunicorn = "^21.2.0"
 watchdog = "^4.0.0"
+starlette = "^0.37.2"
 
 [tool.poetry.plugins."compone.cli"]
 stories = "compone_stories.cli:stories"
