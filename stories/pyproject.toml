@@ -9,7 +9,6 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.1.7"
-gunicorn = "^21.2.0"
 watchdog = "^4.0.0"
 starlette = "^0.37.2"
 hypercorn = "^0.16.0"
