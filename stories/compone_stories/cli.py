@@ -35,11 +35,8 @@ def list_stories(modules):
     "--host", "-h", default="127.0.0.1", show_default=True, help="Hostname to bind to."
 )
 @click.option("--port", "-p", default=5000, show_default=True, help="Port to bind to.")
-@click.option(
-    "--workers", "-w", default=4, show_default=True, help="Number of worker processes."
-)
 @click.pass_obj
-def run(modules, host: str, port: int, workers: int):
+def run(modules, host: str, port: int):
     """Run Compone Stories web server."""
     import asyncio
     import signal
