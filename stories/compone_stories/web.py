@@ -1,36 +1,40 @@
-import multiprocessing as mp
-
-from compone.component import _ComponentBase
-from flask import Flask, Response, redirect, url_for
-from flask import typing as ft
+from starlette.applications import Starlette
+from starlette.responses import RedirectResponse, Response
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from .components import AllStoriesPage
 from .renderer import Renderer
 
 
-class ComponentApp(Flask):
-    def make_response(self, rv: ft.ResponseReturnValue) -> Response:
-        if isinstance(rv, _ComponentBase):
-            return self.response_class(str(rv))
-        else:
-            return super().make_response(rv)
-
-
-def create_app(renderer: Renderer) -> ComponentApp:
-    app = ComponentApp("compone_stories")
-
-    @app.route("/")
-    def index():
+def create_app(renderer: Renderer):
+    async def index(request):
         first_story_name = renderer.story_names()[0]
-        return redirect(url_for("story", story_name=first_story_name))
+        return RedirectResponse(request.url_for("story", story_name=first_story_name))
 
-    @app.route("/story/<story_name>")
-    def story(story_name):
+    async def story(request):
+        story_name = request.path_params["story_name"]
         story_names = renderer.story_names()
+        story_urls = [
+            request.url_for("story", story_name=story_name)
+            for story_name in story_names
+        ]
+        stories = zip(story_names, story_urls)
         story_content = renderer.render_story(story_name)
-        return AllStoriesPage(
-            story_names=story_names,
+        css_url = request.url_for("static", path="stories.css")
+        page = AllStoriesPage(
+            css_url=css_url,
+            stories=stories,
             active_story=story_name,
         )[story_content,]
+        return Response(str(page))
 
+    # This uses /{path} as path_param
+    static_app = StaticFiles(packages=[("compone_stories", "static")])
+    routes = [
+        Route("/", index),
+        Route("/story/{story_name}", story),
+        Mount("/static", app=static_app, name="static"),
+    ]
+    app = Starlette(debug=True, routes=routes)
     return app

@@ -41,23 +41,20 @@ def list_stories(modules):
 @click.pass_obj
 def run(modules, host, port, workers):
     """Run Compone Stories web server."""
+    import asyncio
+
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+
     from .renderer import Renderer
-    from .server import GunicornServer, fork_process
     from .watcher import watch_files
     from .web import create_app
 
     # TODO: run number of workers from Renderer too
     renderer = Renderer(modules)
-    app = create_app(renderer)
-    server = GunicornServer(app, host, port, workers)
-    wsgi_server = fork_process(server.run)
-    file_watcher = watch_files("example_stories/tailwind.py", callback=renderer.restart)
-
-    with (
-        renderer,
-        wsgi_server as wsgi_process,
-        file_watcher,
-    ):
-        wsgi_process.join()
-
-    # FIXME: exceptions are not handled, click.Abort will be raised on KeyboardInterrupt
+    config = Config()
+    config.bind = [f"{host}:{port}"]
+    with renderer:
+        app = create_app(renderer)
+        # file_watcher = watch_files("example_stories/tailwind.py", callback=renderer.restart)
+        asyncio.run(serve(app, config))
