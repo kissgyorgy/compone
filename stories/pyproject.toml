@@ -9,9 +9,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.1.7"
-watchdog = "^4.0.0"
 starlette = "^0.37.2"
 hypercorn = "^0.16.0"
+watchfiles = "^0.21.0"
 
 [tool.poetry.plugins."compone.cli"]
 stories = "compone_stories.cli:stories"
