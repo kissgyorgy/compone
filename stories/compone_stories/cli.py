@@ -39,22 +39,33 @@ def list_stories(modules):
     "--workers", "-w", default=4, show_default=True, help="Number of worker processes."
 )
 @click.pass_obj
-def run(modules, host, port, workers):
+def run(modules, host: str, port: int, workers: int):
     """Run Compone Stories web server."""
     import asyncio
+    import signal
 
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
+    from watchfiles import awatch
 
     from .renderer import Renderer
-    from .watcher import watch_files
     from .web import create_app
 
-    # TODO: run number of workers from Renderer too
-    renderer = Renderer(modules)
     config = Config()
     config.bind = [f"{host}:{port}"]
-    with renderer:
-        app = create_app(renderer)
-        # file_watcher = watch_files("example_stories/tailwind.py", callback=renderer.restart)
-        asyncio.run(serve(app, config))
+
+    loop = asyncio.new_event_loop()
+    shutdown_event = asyncio.Event()
+    for signal_name in {"SIGINT", "SIGTERM", "SIGQUIT"}:
+        loop.add_signal_handler(getattr(signal, signal_name), shutdown_event.set)
+
+    renderer = Renderer(modules)
+    app = create_app(renderer)
+
+    async def watch_files(shutdown_event):
+        async for changes in awatch("example_stories/", stop_event=shutdown_event):
+            renderer.restart()
+
+    loop.create_task(renderer.run(shutdown_event))
+    loop.create_task(watch_files(shutdown_event))
+    loop.run_until_complete(serve(app, config, shutdown_trigger=shutdown_event.wait))

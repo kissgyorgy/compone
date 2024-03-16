@@ -9,18 +9,18 @@ from .renderer import Renderer
 
 def create_app(renderer: Renderer):
     async def index(request):
-        first_story_name = renderer.story_names()[0]
-        return RedirectResponse(request.url_for("story", story_name=first_story_name))
+        story_names = await renderer.story_names()
+        return RedirectResponse(request.url_for("story", story_name=story_names[0]))
 
     async def story(request):
         story_name = request.path_params["story_name"]
-        story_names = renderer.story_names()
+        story_names = await renderer.story_names()
         story_urls = [
             request.url_for("story", story_name=story_name)
             for story_name in story_names
         ]
         stories = zip(story_names, story_urls)
-        story_content = renderer.render_story(story_name)
+        story_content = await renderer.render_story(story_name)
         css_url = request.url_for("static", path="stories.css")
         page = AllStoriesPage(
             css_url=css_url,

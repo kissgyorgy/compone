@@ -1,5 +1,7 @@
+import asyncio
 import importlib
 import multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.context import SpawnProcess
 from operator import itemgetter
 
@@ -79,15 +81,10 @@ class Renderer:
         self._modules = modules
         self._parent_conn, self._child_conn = None, None
         self._process = None
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+        self._command_executor = None
 
     def restart(self):
+        # It's even required to block, because no other command should run until restarted
         # Don't close the pipe, it will be used for the new process
         self._parent_conn.send([_Command.STOP])
         self._process.join()
@@ -96,29 +93,46 @@ class Renderer:
         self._process.start()
 
     def start(self):
+        self._command_executor = ThreadPoolExecutor()
         self._parent_conn, self._child_conn = mp.Pipe()
         self._process = _RenderProcess(self._modules, self._child_conn)
         self._process.start()
         print("Renderer started")
 
-    def _run_command(self, command, *args):
-        self._parent_conn.send([command, *args])
-        return self._parent_conn.recv()
+    async def run(self, shutdown_event: asyncio.Event):
+        # We can block in start and stop, doesn't really matter
+        self.start()
+        try:
+            await shutdown_event.wait()
+        finally:
+            self.stop()
 
-    def render_story(self, story_name: str) -> str:
-        return self._run_command(_Command.RENDER, story_name)
+    async def _run_command(self, command, *args):
+        loop = asyncio.get_running_loop()
 
-    def story_names(self) -> list[str]:
-        return self._run_command(_Command.STORY_NAMES)
+        def run_command():
+            self._parent_conn.send([command, *args])
+            return self._parent_conn.recv()
+
+        result = await loop.run_in_executor(self._command_executor, run_command)
+        return result
+
+    async def render_story(self, story_name: str) -> str:
+        return await self._run_command(_Command.RENDER, story_name)
+
+    async def story_names(self) -> list[str]:
+        return await self._run_command(_Command.STORY_NAMES)
 
     def stop(self):
         # Must not recv(), otherwise it will hang
         self._parent_conn.send([_Command.STOP])
         self._parent_conn.close()
+        self._command_executor.shutdown(wait=False, cancel_futures=True)
 
         self._process.join()
         self._process.close()
 
         self._parent_conn, self._child_conn = None, None
         self._process = None
+        self._command_executor = None
         print("Renderer stopped")
