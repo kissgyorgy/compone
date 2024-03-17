@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import multiprocessing as mp
+import signal
 from concurrent.futures import ProcessPoolExecutor
 from operator import itemgetter
 
@@ -13,6 +14,7 @@ class _RenderProcess:
     @classmethod
     def _init_stories(cls, module_names):
         print("Running initializer")
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         importlib.invalidate_caches()
         # TODO: use venusian for this?
         for name in module_names:
