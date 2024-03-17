@@ -739,10 +739,6 @@ select {
   --tw-backdrop-sepia:  ;
 }
 
-.static {
-  position: static;
-}
-
 .m-4 {
   margin: 1rem;
 }
@@ -750,6 +746,10 @@ select {
 .mx-auto {
   margin-left: auto;
   margin-right: auto;
+}
+
+.mt-4 {
+  margin-top: 1rem;
 }
 
 .grid {
