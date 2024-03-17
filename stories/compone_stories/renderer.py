@@ -1,7 +1,6 @@
 import asyncio
 import importlib
 import multiprocessing as mp
-import os
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.context import SpawnProcess
 from operator import itemgetter
@@ -72,57 +71,6 @@ class _RenderProcess(SpawnProcess):
             raise ValueError(f"Unknown command: {cmd}")
 
 
-class AsyncPipe:
-    def __init__(self):
-        self._loop = asyncio.get_running_loop()
-
-    async def connect(self):
-        (
-            self._parent_reader,
-            self._child_writer,
-            self._reader_transport,
-        ) = await self._create_parent_pipe()
-        (
-            self._child_reader,
-            self._parent_writer,
-            self._writer_transport,
-        ) = await self._create_child_pipe()
-
-    async def _create_parent_pipe(self):
-        reader, writer = os.pipe()
-        stream_reader = asyncio.StreamReader()
-        reader_transport, reader_proto = await self._loop.connect_read_pipe(
-            lambda: asyncio.StreamReaderProtocol(stream_reader),
-            os.fdopen(reader, "r"),
-        )
-        return stream_reader, writer, reader_transport
-
-    async def _create_child_pipe(self):
-        reader, writer = os.pipe()
-
-        stream_reader2 = asyncio.StreamReader()
-        writer_transport, writer_proto = await self._loop.connect_write_pipe(
-            lambda: asyncio.StreamReaderProtocol(stream_reader2),
-            os.fdopen(writer, "w"),
-        )
-        stream_writer = asyncio.StreamWriter(
-            writer_transport, writer_proto, stream_reader2, self._loop
-        )
-        return reader, stream_writer, writer_transport
-
-    @property
-    def parent(self):
-        return self._parent_reader, self._parent_writer
-
-    @property
-    def child(self):
-        return self._child_reader, self._child_writer
-
-    def close(self):
-        self._reader_transport.close()
-        self._writer_transport.close()
-
-
 class Renderer:
     """A class to render stories in a separate process to avoid
     re-importing the stories every time a component is rendered
@@ -146,9 +94,8 @@ class Renderer:
 
     def start(self):
         self._command_executor = ThreadPoolExecutor()
-        # self._parent_conn, self._child_conn = mp.Pipe()
-        self._pipe = AsyncPipe()
-        self._process = _RenderProcess(self._modules, self._pipe.child)
+        self._parent_conn, self._child_conn = mp.Pipe()
+        self._process = _RenderProcess(self._modules, self._child_conn)
         self._process.start()
         print("Renderer started")
 
