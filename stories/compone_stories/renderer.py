@@ -10,6 +10,7 @@ from .stories import REGISTERED_STORIES
 
 class _RenderProcess:
     _stories = {}
+    _render_cache = {}
 
     @classmethod
     def _init_stories(cls, module_names):
@@ -30,7 +31,11 @@ class _RenderProcess:
 
     @classmethod
     def render_story(cls, story_name):
-        return cls._stories[story_name].render()
+        if story_name in cls._render_cache:
+            return cls._render_cache[story_name]
+        content = cls._stories[story_name].render()
+        cls._render_cache[story_name] = content
+        return content
 
 
 class Renderer:
