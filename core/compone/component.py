@@ -226,7 +226,9 @@ class _HTMLComponentBase(_ComponentBase):
         bool_args = []
 
         for key, val in kwargs.items():
-            if key in {"class_", "for_", "is_", "async_"}:
+            if isinstance(val, str) and '"' in val and "'" in val:
+                raise ValueError("Both single and double quotes in attribute value")
+            elif key in {"class_", "for_", "is_", "async_"}:
                 no_underscore = key[:-1]
                 new_kwargs[no_underscore] = val
                 keyval_args[no_underscore] = val
@@ -246,9 +248,16 @@ class _HTMLComponentBase(_ComponentBase):
         conv = lambda s: escape(str(s).replace("_", "-"))
         bool_args = " ".join(conv(a) for a in self._bool_args)
         bool_args = " " + bool_args if bool_args else ""
-        kv_args = " ".join(
-            f'{conv(k)}="{escape(v)}"' for k, v in self._keyval_args.items()
-        )
+        kv_args = []
+        for k, v in self._keyval_args.items():
+            html_key = conv(k)
+            html_val = escape(v)
+            if '"' in html_val:
+                html_attr = f"{html_key}='{html_val}'"
+            else:
+                html_attr = f'{html_key}="{html_val}"'
+            kv_args.append(html_attr)
+        kv_args = " ".join(kv_args)
         kv_args = " " + kv_args if kv_args else ""
         return bool_args + kv_args
 
@@ -266,7 +275,7 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
 
 
 def Component(
-    func_or_class: Union[ComponentClass, Callable]
+    func_or_class: Union[ComponentClass, Callable],
 ) -> Union[Type[_ClassComponent], Type[_FuncComponent]]:
     if inspect.isfunction(func_or_class):
         return _make_func_component(func_or_class)
