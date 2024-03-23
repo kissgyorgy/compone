@@ -22,6 +22,5 @@ def test_quotes_in_attribute_value(elem, expected):
 
 
 def test_both_quotes_in_attribute_value():
-    # Maybe we should raise right here?
     with pytest.raises(ValueError):
         html.Div(data_attr=safe("""{ some: "data", someOther: 'data' }"""))
