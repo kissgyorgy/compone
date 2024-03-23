@@ -14,7 +14,10 @@ class ComponeCommands(click.MultiCommand):
         return [c.name for c in get_entry_points()]
 
     def get_command(self, ctx, name):
-        ep = get_entry_points(name)
+        try:
+            ep = get_entry_points(name)
+        except KeyError:
+            return None
         module_name, command = ep.value.rsplit(":")
         mod = importlib.import_module(module_name)
         return getattr(mod, command)
