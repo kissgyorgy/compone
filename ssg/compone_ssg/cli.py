@@ -41,7 +41,7 @@ def build(config_path: Path):
 
     click.echo("Building site...")
     for route in config.get_content_routes():
-        content_meta, content_html = route.parser.parse(route.content_path)
+        content_meta, content_html = route.parser.parse(route.get_content)
         full_html = route.component(**content_meta)[content_html]
 
         output_rel = route.output_path.resolve().relative_to(config._output_dir)

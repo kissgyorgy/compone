@@ -10,7 +10,7 @@ from .themes import BasicTheme
 
 @dataclass
 class PageRoute:
-    content_path: Path
+    get_content: callable
     parser: BaseParser
     component: _ComponentBase
     output_path: Path
@@ -58,7 +58,7 @@ class Config:
 
             parser = self.CONTENT_PARSERS.get(content_path.suffix)
             page_route = PageRoute(
-                content_path,
+                content_path.read_text,
                 parser,
                 component,
                 self._output_dir / output_relpath,
