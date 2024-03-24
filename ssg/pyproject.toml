@@ -8,6 +8,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8"
+markdown = "^3.6"
 
 [tool.poetry.plugins."compone.cli"]
 ssg = "compone_ssg.cli:ssg"
