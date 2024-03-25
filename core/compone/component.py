@@ -204,6 +204,7 @@ class _HTMLComponentBase(_ComponentBase):
     def __init__(self, **kwargs):
         if self._attributes is not None:
             kwargs.update(self._attributes)
+        self._original_kwargs = kwargs
 
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
