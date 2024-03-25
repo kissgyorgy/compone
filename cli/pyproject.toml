@@ -9,6 +9,7 @@ readme = "../README.md"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.1.7"
+lxml = "^5.1.0"
 
 [tool.poetry.scripts]
 compone = 'compone_cli.cli:main'
