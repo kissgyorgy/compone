@@ -254,6 +254,8 @@ class _HTMLComponentBase(_ComponentBase):
         bool_args = " " + bool_args if bool_args else ""
         kv_args = []
         for k, v in self._keyval_args.items():
+            if v is None:
+                continue
             html_key = conv(k)
             html_val = escape(v)
             if '"' in html_val:
@@ -289,6 +291,13 @@ def Component(
         raise TypeError("Components can only be classes or functions")
 
 
+def _make_defaults(default_dict):
+    if not default_dict:
+        return None
+    else:
+        return {k: v for k, v in default_dict.items() if v is not None}
+
+
 def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
     if not hasattr(user_class, "render"):
         raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
@@ -303,7 +312,7 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
         (_ClassComponent,),
         dict(
             _user_class=user_class,
-            _defaults=init_argspec.kwonlydefaults,
+            _defaults=_make_defaults(init_argspec.kwonlydefaults),
             _pass_children=pass_children,
             __module__=user_class.__module__,
         ),
@@ -319,7 +328,7 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
         (_FuncComponent,),
         dict(
             _func=func,
-            _defaults=argspec.kwonlydefaults,
+            _defaults=_make_defaults(argspec.kwonlydefaults),
             _pass_children=pass_children,
             __module__=func.__module__,
         ),

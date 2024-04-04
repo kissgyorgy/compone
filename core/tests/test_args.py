@@ -116,3 +116,17 @@ class TestClassDefaults:
     def test_different_types_raises_TypeError(self):
         with pytest.raises(TypeError):
             ClassCompIntDefaults().append(a="barack")
+
+    def test_None_is_not_kept_as_default(self):
+        @Component
+        def NoneDefaultsComp(*, a=None, b=2):
+            return html.Div(a=a, b=b)
+
+        # shold not raise TypeError
+        comp = NoneDefaultsComp().append(a=3)
+        assert str(comp) == """<div a="3" b="2"></div>"""
+
+
+def test_None_is_not_rendered_for_html_components():
+    comp = html.Div(a=None, b=1)
+    assert str(comp) == """<div b="1"></div>"""
