@@ -23,8 +23,11 @@ class ComponentClass(Protocol):
 
 
 class _ComponentBase:
+    _defaults = None
+
     def __init__(self, **kwargs):
-        self._kwargs = kwargs
+        defaults = self._defaults or {}
+        self._kwargs = {**defaults, **kwargs}
 
     def replace(self, **kwargs) -> CompSelf:
         return self._merge(kwargs)
@@ -300,6 +303,7 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
         (_ClassComponent,),
         dict(
             _user_class=user_class,
+            _defaults=init_argspec.kwonlydefaults,
             _pass_children=pass_children,
             __module__=user_class.__module__,
         ),
@@ -315,6 +319,7 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
         (_FuncComponent,),
         dict(
             _func=func,
+            _defaults=argspec.kwonlydefaults,
             _pass_children=pass_children,
             __module__=func.__module__,
         ),
