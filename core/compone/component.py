@@ -1,4 +1,5 @@
 import abc
+import copy
 import inspect
 import keyword
 from contextvars import ContextVar
@@ -51,7 +52,7 @@ class _ComponentBase:
         return self._merge(kwargs)
 
     def copy(self) -> CompSelf:
-        return self.__class__(**self._kwargs.copy())
+        return self._merge({})
 
     def __repr__(self):
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
@@ -68,7 +69,7 @@ class _ComponentBase:
         return Multiple()
 
     def _merge(self, kwargs) -> CompSelf:
-        merged_kwargs = {**self._kwargs, **kwargs}
+        merged_kwargs = {**copy.deepcopy(self._kwargs), **kwargs}
         return self.__class__(**merged_kwargs)
 
 
