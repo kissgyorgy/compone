@@ -33,7 +33,7 @@ class HelloNameStory(Story):
 
 class ButtonStory(Story):
     title = "Primary button"
-    component = PrimaryButton().lazy["Click me"]
+    component = PrimaryButton["Click me"]
 
 
 Story.register(HelloWorldStory, HelloNameStory, ButtonStory)

@@ -1,5 +1,4 @@
 import pytest
-
 from compone import xml
 
 
@@ -16,4 +15,4 @@ def test_versions():
 def test_comments_are_unescaped():
     unsafe_comment = "<script> and # some comments // but can\n be anything"
     res = xml.Comment[unsafe_comment]
-    assert res == f"<-- {unsafe_comment} -->"
+    assert str(res) == f"<-- {unsafe_comment} -->"

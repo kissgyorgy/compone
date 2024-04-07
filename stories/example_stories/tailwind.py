@@ -24,4 +24,4 @@ class Button(TailwindStory):
     title = "TW Primary Button"
     template = TailwindPage
     # FIXME: AttributeError: component has no attribute __name__
-    component = TailwindButton().lazy["Click me"]
+    component = TailwindButton["Click me"]

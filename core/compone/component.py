@@ -14,7 +14,7 @@ last_parent = ContextVar("last_parent", default=(None, None))
 
 T = TypeVar("T")
 CompSelf = TypeVar("CompSelf", bound="_ComponentBase")
-ChildSelf = TypeVar("ChildSelf", bound="_ChildrenMixin")
+ChildSelf = TypeVar("ChildSelf", bound="_ChildrenBase")
 StrType = Union[str, safe]
 ContentType = Union[StrType, CompSelf]
 
@@ -81,7 +81,7 @@ class _ComponentBase:
         return self.__class__(**merged_props)
 
 
-class _ChildrenMixin:
+class _ChildrenBase(_ComponentBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._children = []
@@ -108,17 +108,27 @@ class _ChildrenMixin:
         return cls()[key]
 
     def __getitem__(self, children) -> safe:
+        if self._children:
+            # Not AttributeError because it would be confusing, for ex. when using hasattr.
+            # Also this is like a function call, so a ValueError makes sense
+            raise ValueError(
+                "Component already has children, "
+                "use the += operator if you want to add more."
+            )
+
         if _is_iterable(children):
             # str is a special case, because it's an iterator too
-            # _ChildrenMixins are also iterators because of this very method
-            if isinstance(children, (str, safe, _ChildrenMixin)):
+            # _ChildrenBase are also iterators because of this very method
+            if isinstance(children, (str, safe, _ChildrenBase)):
                 children = (children,)
         else:
             children = (children,)
 
-        return self.__render(children)
+        new = self.copy()
+        new._children = children
+        return new
 
-    def _escape(self, children) -> List[safe]:
+    def _escape(self, children) -> safe:
         escaped_children = []
         for ch in children:
             is_component = isinstance(ch, _ComponentBase)
@@ -127,38 +137,11 @@ class _ChildrenMixin:
         return escaped_children
 
     def __str__(self) -> safe:
-        return self.__render(self._children)
-
-    def __render(self, children: safe) -> safe:
-        if not children:
+        if not self._children:
             return self._render(safe(""))
-        escaped_children = self._escape(children)
+        escaped_children = self._escape(self._children)
         safe_children = safe("".join(escaped_children))
         return self._render(safe_children)
-
-
-class _LazyComponent(_ChildrenMixin, _ComponentBase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._lazy = False
-
-    @property
-    def lazy(self) -> ChildSelf:
-        new = self.copy()
-        new._lazy = True
-        return new
-
-    def __getitem__(self, children) -> safe:
-        if not self._lazy:
-            return super().__getitem__(children)
-
-        if self._children:
-            # Not AttributeError because it would be confusing, for ex. when using hasattr.
-            # Also this is like a function call, so a ValueError makes sense
-            raise ValueError("Lazy component already has children")
-
-        self._children = children
-        return self
 
 
 class _ContentMixin(metaclass=abc.ABCMeta):
@@ -182,7 +165,7 @@ class _ContentMixin(metaclass=abc.ABCMeta):
         ...
 
 
-class _FuncComponent(_ContentMixin, _LazyComponent):
+class _FuncComponent(_ContentMixin, _ChildrenBase):
     _func: Callable
     _pass_children: bool
 
@@ -198,7 +181,7 @@ class _FuncComponent(_ContentMixin, _LazyComponent):
         return content
 
 
-class _ClassComponent(_ContentMixin, _LazyComponent):
+class _ClassComponent(_ContentMixin, _ChildrenBase):
     _pass_children: bool
     _user_class: ComponentClass
 
@@ -280,7 +263,7 @@ class _HTMLComponentBase(_ComponentBase):
         return bool_args + kv_args
 
 
-class _HTMLComponent(_HTMLComponentBase, _LazyComponent):
+class _HTMLComponent(_HTMLComponentBase, _ChildrenBase):
     def _render(self, children: safe) -> safe:
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
