@@ -1,5 +1,6 @@
 import abc
 import inspect
+import keyword
 from contextvars import ContextVar
 from functools import cached_property
 from typing import Callable, Iterable, List, Protocol, Tuple, Type, TypeVar, Union
@@ -232,8 +233,7 @@ class _HTMLComponentBase(_ComponentBase):
         for key, val in kwargs.items():
             if isinstance(val, str) and '"' in val and "'" in val:
                 raise ValueError("Both single and double quotes in attribute value")
-            elif key in {"class_", "for_", "is_", "async_"}:
-                no_underscore = key[:-1]
+            elif keyword.iskeyword(no_underscore := key[:-1]):
                 new_kwargs[no_underscore] = val
                 keyval_args[no_underscore] = val
             elif isinstance(val, bool):
