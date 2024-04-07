@@ -7,9 +7,9 @@ Xml11 = safe('<?xml version="1.1" encoding="UTF-8"?>')
 
 
 class Comment(_ChildrenBase, _HTMLComponentBase):
-    def _escape(self, children) -> List[safe]:
+    def _escape(self, item) -> List[safe]:
         # Anything inside comments should not be escaped
-        return [safe(ch) for ch in children]
+        return safe(item)
 
     def _render(self, children: safe) -> safe:
         return safe(f"<-- {children} -->")

@@ -1,10 +1,9 @@
-import abc
 import copy
 import inspect
 import keyword
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Callable, Iterable, List, Protocol, Tuple, Type, TypeVar, Union
+from typing import Callable, Iterable, Protocol, Tuple, Type, TypeVar, Union
 
 from .escape import escape, safe
 from .utils import _is_iterable
@@ -117,7 +116,7 @@ class _ChildrenBase(_ComponentBase):
             )
 
         if _is_iterable(children):
-            # str is a special case, because it's an iterator too
+            # str is a special case, because it's an iterator too.
             # _ChildrenBase are also iterators because of this very method
             if isinstance(children, (str, safe, _ChildrenBase)):
                 children = (children,)
@@ -128,48 +127,35 @@ class _ChildrenBase(_ComponentBase):
         new._children = children
         return new
 
-    def _escape(self, children) -> safe:
-        escaped_children = []
-        for ch in children:
-            is_component = isinstance(ch, _ComponentBase)
-            safe_ch = safe(ch) if is_component else escape(ch)
-            escaped_children.append(safe_ch)
-        return escaped_children
-
     def __str__(self) -> safe:
         if not self._children:
-            return self._render(safe(""))
-        escaped_children = self._escape(self._children)
-        safe_children = safe("".join(escaped_children))
-        return self._render(safe_children)
+            safe_children = safe("")
+        else:
+            escaped_children = [self._escape(ch) for ch in self._children]
+            safe_children = safe("".join(escaped_children))
+        content = self._render(safe_children)
+        return self._escape(content)
 
-
-class _ContentMixin(metaclass=abc.ABCMeta):
-    def _render(self, children: safe) -> safe:
-        content = self._get_content(children)
-
-        if isinstance(content, safe):
-            return content
-        elif isinstance(content, _ComponentBase):
-            return safe(content)
-        elif isinstance(content, str):
-            return escape(content)
-        elif _is_iterable(content):
-            escaped = self._escape(content)
+    @classmethod
+    def _escape(cls, item) -> safe:
+        if isinstance(item, safe):
+            return item
+        elif isinstance(item, _ComponentBase):
+            return safe(item)
+        elif isinstance(item, str):
+            return escape(item)
+        elif _is_iterable(item):
+            escaped = [cls._escape(e) for e in item]
             return safe("".join(escaped))
         else:
-            return escape(content)
-
-    @abc.abstractmethod
-    def _get_content(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
-        ...
+            return escape(item)
 
 
-class _FuncComponent(_ContentMixin, _ChildrenBase):
+class _FuncComponent(_ChildrenBase):
     _func: Callable
     _pass_children: bool
 
-    def _get_content(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
+    def _render(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
         args = tuple(self.props[argname] for argname in self._argnames)
         kwargs = {k: v for k, v in self.props.items() if k not in self._argnames}
 
@@ -181,7 +167,7 @@ class _FuncComponent(_ContentMixin, _ChildrenBase):
         return content
 
 
-class _ClassComponent(_ContentMixin, _ChildrenBase):
+class _ClassComponent(_ChildrenBase):
     _pass_children: bool
     _user_class: ComponentClass
 
@@ -189,7 +175,7 @@ class _ClassComponent(_ContentMixin, _ChildrenBase):
     def _user_instance(self) -> ComponentClass:
         return self._user_class(**self.props)
 
-    def _get_content(self, children: safe):
+    def _render(self, children: safe):
         if self._pass_children:
             return self._user_instance.render(children)
         else:
