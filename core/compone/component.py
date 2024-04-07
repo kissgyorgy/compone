@@ -41,6 +41,18 @@ class _ComponentBase:
             appended[key] = val
         return self._merge(appended)
 
+    def merge(self, **kwargs) -> CompSelf:
+        if overlapping := [key for key in kwargs if key in self._kwargs]:
+            overlapping_keys = ", ".join(overlapping)
+            raise KeyError(
+                f"{overlapping_keys} already specified in {self!r}, "
+                "use the replace method if you want to replace arguments"
+            )
+        return self._merge(kwargs)
+
+    def copy(self) -> CompSelf:
+        return self.__class__(**self._kwargs.copy())
+
     def __repr__(self):
         kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
         return f"<{self.__class__.__name__}({kwargs})>"
@@ -58,15 +70,6 @@ class _ComponentBase:
     def _merge(self, kwargs) -> CompSelf:
         merged_kwargs = {**self._kwargs, **kwargs}
         return self.__class__(**merged_kwargs)
-
-    def __call__(self, **kwargs) -> CompSelf:
-        if overlapping := [key for key in kwargs if key in self._kwargs]:
-            overlapping_keys = ", ".join(overlapping)
-            raise KeyError(
-                f"{overlapping_keys} already specified in {self!r}, "
-                "use the replace method if you want to replace arguments"
-            )
-        return self._merge(kwargs)
 
 
 class _ChildrenMixin:
@@ -132,7 +135,7 @@ class _LazyComponent(_ChildrenMixin, _ComponentBase):
 
     @property
     def lazy(self) -> ChildSelf:
-        new = self()
+        new = self.copy()
         new._lazy = True
         return new
 
@@ -213,10 +216,6 @@ class _HTMLComponentBase(_ComponentBase):
         new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
         super().__init__(**new_kwargs)
 
-    def __call__(self, **kwargs) -> CompSelf:
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().__call__(**converted)
-
     def replace(self, **kwargs) -> CompSelf:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().replace(**converted)
@@ -224,6 +223,10 @@ class _HTMLComponentBase(_ComponentBase):
     def append(self, **kwargs) -> CompSelf:
         converted, _, _ = self._convert_kwargs(kwargs)
         return super().append(**converted)
+
+    def merge(self, **kwargs) -> CompSelf:
+        converted, _, _ = self._convert_kwargs(kwargs)
+        return super().merge(**converted)
 
     def _convert_kwargs(self, kwargs) -> Tuple[dict, dict, list]:
         new_kwargs = {}

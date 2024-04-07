@@ -1,5 +1,4 @@
 import pytest
-
 from compone import Component, html, safe
 
 
@@ -9,7 +8,7 @@ def test_lazy_without_children():
         return html.Div()
 
     assert str(NoChildren().lazy) == "<div></div>"
-    assert str(NoChildren().lazy()) == "<div></div>"
+    assert str(NoChildren().lazy.copy()) == "<div></div>"
 
 
 def test_lazy_with_fixed_children():
@@ -19,7 +18,7 @@ def test_lazy_with_fixed_children():
 
     expected = safe("<div>Hello</div>")
     assert str(WithChildren().lazy) == expected
-    assert str(WithChildren().lazy()) == expected
+    assert str(WithChildren().lazy.copy()) == expected
 
 
 def test_lazy_with_dynamic_children():
@@ -29,7 +28,7 @@ def test_lazy_with_dynamic_children():
 
     expected = safe("<div>Hello</div>")
     assert str(WithChildren().lazy["Hello"]) == expected
-    assert str(WithChildren().lazy()["Hello"]) == expected
+    assert str(WithChildren().lazy.copy()["Hello"]) == expected
 
 
 def test_lazy_is_idempotent():
@@ -39,9 +38,9 @@ def test_lazy_is_idempotent():
 
     expected = safe("<div>Hello</div>")
     assert str(WithChildren().lazy.lazy["Hello"]) == expected
-    assert str(WithChildren().lazy.lazy()["Hello"]) == expected
-    assert str(WithChildren().lazy().lazy["Hello"]) == expected
-    assert str(WithChildren().lazy().lazy()["Hello"]) == expected
+    assert str(WithChildren().lazy.lazy.copy()["Hello"]) == expected
+    assert str(WithChildren().lazy.copy().lazy["Hello"]) == expected
+    assert str(WithChildren().lazy.copy().lazy.copy()["Hello"]) == expected
 
 
 def test_lazy_component_cannot_overwrite_children():
@@ -57,4 +56,4 @@ def test_lazy_component_cannot_overwrite_children():
 def test_html_components_are_lazy():
     expected = safe("<div>Hello</div>")
     assert str(html.Div().lazy["Hello"]) == expected
-    assert str(html.Div().lazy()["Hello"]) == expected
+    assert str(html.Div().lazy.copy()["Hello"]) == expected
