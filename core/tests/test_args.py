@@ -130,3 +130,51 @@ class TestClassDefaults:
 def test_None_is_not_rendered_for_html_components():
     comp = html.Div(a=None, b=1)
     assert str(comp) == """<div b="1"></div>"""
+
+
+@Component
+def CompWithArgsOnly(a, b, /):
+    return html.Div(a=a, b=b)
+
+
+def test_args_saved_as_named_props():
+    comp = CompWithArgsOnly(1, 2)
+    assert comp.props == {"a": 1, "b": 2}
+
+
+def test_props_can_be_mutated():
+    comp = CompWithArgsOnly(1, 2)
+    comp.props["a"] = 3
+    assert str(comp) == """<div a="3" b="2"></div>"""
+
+
+def test_append_works_on_args_only_components():
+    comp = CompWithArgsOnly(1, 2).append(a=3)
+    assert str(comp) == """<div a="4" b="2"></div>"""
+
+
+def test_merge_works_on_args_only_components():
+    @Component
+    def MyComp(a, b=2, /):
+        return html.Div(a=a, b=b)
+
+    comp = MyComp(1).replace(b=4)
+    assert str(comp) == """<div a="1" b="4"></div>"""
+
+
+@Component
+def CompWithMixedArgs(a, b=2, *, c, d=4):
+    return html.Div(a=a, b=b, c=c, d=d)
+
+
+@pytest.mark.parametrize(
+    "comp, expected",
+    [
+        (CompWithMixedArgs(1, 5, c=3), """<div a="1" b="5" c="3" d="4"></div>"""),
+        (CompWithMixedArgs(5, c=3), """<div a="5" b="2" c="3" d="4"></div>"""),
+        (CompWithMixedArgs(a=1, c=3), """<div a="1" b="2" c="3" d="4"></div>"""),
+        (CompWithMixedArgs(a=1, b=5, c=4), """<div a="1" b="5" c="4" d="4"></div>"""),
+    ],
+)
+def test_comp_with_mixed_args(comp, expected):
+    assert str(comp) == expected

@@ -25,11 +25,19 @@ class ComponentClass(Protocol):
 
 
 class _ComponentBase:
+    _argnames: list
     _defaults = None
+    props: dict
 
-    def __init__(self, **kwargs):
-        defaults = self._defaults or {}
-        self._kwargs = {**defaults, **kwargs}
+    def __init__(self, *args, **kwargs):
+        props = copy.deepcopy(self._defaults) if self._defaults else {}
+
+        if args:
+            for argname, argval in zip(self._argnames, args):
+                props[argname] = argval
+
+        props.update(kwargs)
+        self.props = props
 
     def replace(self, **kwargs) -> CompSelf:
         return self._merge(kwargs)
@@ -37,13 +45,13 @@ class _ComponentBase:
     def append(self, **kwargs) -> CompSelf:
         appended = {}
         for key, val in kwargs.items():
-            if key in self._kwargs:
-                val = self._kwargs[key] + val
+            if key in self.props:
+                val = self.props[key] + val
             appended[key] = val
         return self._merge(appended)
 
     def merge(self, **kwargs) -> CompSelf:
-        if overlapping := [key for key in kwargs if key in self._kwargs]:
+        if overlapping := [key for key in kwargs if key in self.props]:
             overlapping_keys = ", ".join(overlapping)
             raise KeyError(
                 f"{overlapping_keys} already specified in {self!r}, "
@@ -55,8 +63,8 @@ class _ComponentBase:
         return self._merge({})
 
     def __repr__(self):
-        kwargs = ", ".join(f"{k}={v!r}" for k, v in self._kwargs.items())
-        return f"<{self.__class__.__name__}({kwargs})>"
+        proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
+        return f"<{self.__class__.__name__}({proplist})>"
 
     def __mul__(self, other: int) -> CompSelf:
         if not isinstance(other, int):
@@ -69,13 +77,13 @@ class _ComponentBase:
         return Multiple()
 
     def _merge(self, kwargs) -> CompSelf:
-        merged_kwargs = {**copy.deepcopy(self._kwargs), **kwargs}
-        return self.__class__(**merged_kwargs)
+        merged_props = {**copy.deepcopy(self.props), **kwargs}
+        return self.__class__(**merged_props)
 
 
 class _ChildrenMixin:
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._children = []
 
     def __enter__(self) -> ChildSelf:
@@ -130,8 +138,8 @@ class _ChildrenMixin:
 
 
 class _LazyComponent(_ChildrenMixin, _ComponentBase):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._lazy = False
 
     @property
@@ -141,16 +149,16 @@ class _LazyComponent(_ChildrenMixin, _ComponentBase):
         return new
 
     def __getitem__(self, children) -> safe:
-        if self._lazy:
-            if self._children:
-                # Not AttributeError because it would be confusing, for ex. when using hasattr.
-                # Also this is like a function call, so a ValueError makes sense
-                raise ValueError("Lazy component already has children")
-            else:
-                self._children = children
-                return self
-        else:
+        if not self._lazy:
             return super().__getitem__(children)
+
+        if self._children:
+            # Not AttributeError because it would be confusing, for ex. when using hasattr.
+            # Also this is like a function call, so a ValueError makes sense
+            raise ValueError("Lazy component already has children")
+
+        self._children = children
+        return self
 
 
 class _ContentMixin(metaclass=abc.ABCMeta):
@@ -179,14 +187,14 @@ class _FuncComponent(_ContentMixin, _LazyComponent):
     _pass_children: bool
 
     def _get_content(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
+        args = tuple(self.props[argname] for argname in self._argnames)
+        kwargs = {k: v for k, v in self.props.items() if k not in self._argnames}
+
         if self._pass_children:
-            kwargs = {**self._kwargs, "children": children}
-        else:
-            # should be okay not to copy
-            kwargs = self._kwargs
+            kwargs["children"] = children
 
         # self.func is unbound
-        content = self.__class__._func(**kwargs)
+        content = self.__class__._func(*args, **kwargs)
         return content
 
 
@@ -196,7 +204,7 @@ class _ClassComponent(_ContentMixin, _LazyComponent):
 
     @cached_property
     def _user_instance(self) -> ComponentClass:
-        return self._user_class(**self._kwargs)
+        return self._user_class(**self.props)
 
     def _get_content(self, children: safe):
         if self._pass_children:
@@ -295,11 +303,27 @@ def Component(
         raise TypeError("Components can only be classes or functions")
 
 
-def _make_defaults(default_dict):
-    if not default_dict:
+def _make_defaults(argspec):
+    if argspec.varargs is not None or argspec.varkw is not None:
+        # We cannot save props and .copy(), .append(), .replace() wouldn't work
+        raise TypeError("Components cannot have *args or **kwargs")
+
+    if not argspec.args and not argspec.kwonlyargs:
         return None
-    else:
-        return {k: v for k, v in default_dict.items() if v is not None}
+
+    props = {}
+
+    if argspec.defaults is not None:
+        # Defaults are only for the last arguments
+        names_with_defaults = argspec.args[-len(argspec.defaults) :]
+        argdefaults = dict(zip(names_with_defaults, argspec.defaults))
+        props.update(argdefaults)
+
+    if argspec.kwonlydefaults is not None:
+        kwdefaults = {k: v for k, v in argspec.kwonlydefaults.items() if v is not None}
+        props.update(kwdefaults)
+
+    return props
 
 
 def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
@@ -308,7 +332,6 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
 
     init_argspec = inspect.getfullargspec(user_class.__init__)
     init_argspec.args.remove("self")
-    _check_argspec(init_argspec, user_class.__name__)
     render_argspec = inspect.getfullargspec(user_class.render)
     pass_children = "children" in (render_argspec.args + render_argspec.kwonlyargs)
     return type(
@@ -316,7 +339,8 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
         (_ClassComponent,),
         dict(
             _user_class=user_class,
-            _defaults=_make_defaults(init_argspec.kwonlydefaults),
+            _argnames=tuple(init_argspec.args),
+            _defaults=_make_defaults(init_argspec),
             _pass_children=pass_children,
             __module__=user_class.__module__,
         ),
@@ -325,28 +349,18 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
 
 def _make_func_component(func: Callable) -> Type[_FuncComponent]:
     argspec = inspect.getfullargspec(func)
-    _check_argspec(argspec, func.__name__)
     pass_children = "children" in argspec.kwonlyargs
     return type(
         func.__name__,
         (_FuncComponent,),
         dict(
             _func=func,
-            _defaults=_make_defaults(argspec.kwonlydefaults),
+            _argnames=tuple(argspec.args),
+            _defaults=_make_defaults(argspec),
             _pass_children=pass_children,
             __module__=func.__module__,
         ),
     )
-
-
-def _check_argspec(argspec: inspect.FullArgSpec, name: str):
-    if argspec.args:
-        arglist = ", ".join(argspec.args)
-        raise TypeError(
-            "Components must only have keyword arguments!\n"
-            "           Found positional arguments: "
-            f"{arglist} in {name}.__init__"
-        )
 
 
 def _HtmlElem(html_tag: str, parent_class: T) -> T:
