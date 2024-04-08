@@ -3,7 +3,7 @@ import inspect
 import keyword
 from contextvars import ContextVar
 from functools import cached_property
-from typing import Callable, Iterable, Protocol, Tuple, Type, TypeVar, Union
+from typing import Callable, Iterable, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from .escape import escape, safe
 from .utils import _is_iterable
@@ -24,11 +24,17 @@ class ComponentClass(Protocol):
 
 
 class _ComponentBase:
-    _argnames: list
-    _defaults = None
-    props: dict
+    _argnames: tuple[str]
+    _kwargnames: tuple[str]
+    _has_starkwargs: bool
+    _defaults: Optional[dict] = None
+    props: Optional[dict] = None
 
     def __init__(self, *args, **kwargs):
+        # TODO: use inspect.Signature.bind instead of these
+        self._check_args(args, kwargs)
+        self._check_kwargs(kwargs)
+
         props = copy.deepcopy(self._defaults) if self._defaults else {}
 
         if args:
@@ -38,10 +44,44 @@ class _ComponentBase:
         props.update(kwargs)
         self.props = props
 
+    def _check_args(self, args, kwargs):
+        if self.props is not None:
+            return
+
+        missing = len(self._argnames) - len(args)
+        name = self.__class__.__name__
+        if missing > 0 and len(self._defaults) < missing:
+            missing_names = self._argnames[-missing:]
+            if all((name in kwargs) for name in missing_names):
+                return
+            missing_names_list = ", ".join(missing_names)
+            plural = "s" if missing > 1 else ""
+            raise TypeError(
+                f"{name}() missing {missing} positional argument{plural}: {missing_names_list}"
+            )
+        elif missing < 0:
+            raise TypeError(
+                f"{name}() takes {len(self._argnames)} positional arguments but {len(args)} were given"
+            )
+
+    def _check_kwargs(self, kwargs):
+        if not kwargs or self._has_starkwargs:
+            return
+
+        if unexpected := set(kwargs) - set(self._argnames + self._kwargnames):
+            if len(unexpected) == 1:
+                message = "got an unexpected keyword argument"
+            else:
+                message = "got unexpected keyword arguments"
+            names = ", ".join(unexpected)
+            raise TypeError(f"{self.__class__.__name__}() {message}: {names}")
+
     def replace(self, **kwargs) -> CompSelf:
+        self._check_kwargs(kwargs)
         return self._merge(kwargs)
 
     def append(self, **kwargs) -> CompSelf:
+        self._check_kwargs(kwargs)
         appended = {}
         for key, val in kwargs.items():
             if key in self.props:
@@ -50,6 +90,7 @@ class _ComponentBase:
         return self._merge(appended)
 
     def merge(self, **kwargs) -> CompSelf:
+        self._check_kwargs(kwargs)
         if overlapping := [key for key in kwargs if key in self.props]:
             overlapping_keys = ", ".join(overlapping)
             raise KeyError(
@@ -62,7 +103,10 @@ class _ComponentBase:
         return self._merge({})
 
     def __repr__(self):
-        proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
+        if self.props:
+            proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
+        else:
+            proplist = ""
         return f"<{self.__class__.__name__}({proplist})>"
 
     def __mul__(self, other: int) -> CompSelf:
@@ -185,6 +229,9 @@ class _ClassComponent(_ChildrenBase):
 class _HTMLComponentBase(_ComponentBase):
     _html_tag: str
     _attributes = None
+    _argnames = ()
+    _kwargnames = ()
+    _has_starkwargs = True
 
     def __init__(self, **kwargs):
         if self._attributes is not None:
@@ -273,9 +320,9 @@ def Component(
 
 
 def _make_defaults(argspec):
-    if argspec.varargs is not None or argspec.varkw is not None:
+    if argspec.varargs is not None:
         # We cannot save props and .copy(), .append(), .replace() wouldn't work
-        raise TypeError("Components cannot have *args or **kwargs")
+        raise TypeError("Components cannot have *args")
 
     if not argspec.args and not argspec.kwonlyargs:
         return None
@@ -309,6 +356,8 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
         dict(
             _user_class=user_class,
             _argnames=tuple(init_argspec.args),
+            _kwargnames=tuple(init_argspec.kwonlyargs),
+            _has_starkwargs=init_argspec.varkw is not None,
             _defaults=_make_defaults(init_argspec),
             _pass_children=pass_children,
             __module__=user_class.__module__,
@@ -325,6 +374,8 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
         dict(
             _func=func,
             _argnames=tuple(argspec.args),
+            _kwargnames=tuple(argspec.kwonlyargs),
+            _has_starkwargs=argspec.varkw is not None,
             _defaults=_make_defaults(argspec),
             _pass_children=pass_children,
             __module__=func.__module__,

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from compone import Component, html
 
@@ -153,6 +155,34 @@ def test_append_works_on_args_only_components():
     assert str(comp) == """<div a="4" b="2"></div>"""
 
 
+def test_missing_args():
+    with pytest.raises(
+        TypeError,
+        match=re.escape("CompWithArgsOnly() missing 2 positional arguments: a, b"),
+    ):
+        CompWithArgsOnly()
+
+
+def test_more_args():
+    with pytest.raises(
+        TypeError,
+        match=re.escape(
+            "CompWithArgsOnly() takes 2 positional arguments but 3 were given"
+        ),
+    ):
+        CompWithArgsOnly(1, 2, 3)
+
+
+def test_component_with_more_args_and_kwarg():
+    with pytest.raises(
+        TypeError,
+        match=re.escape(
+            "CompWithArgsOnly() takes 2 positional arguments but 3 were given"
+        ),
+    ):
+        CompWithArgsOnly(1, 2, 3, c=4)
+
+
 def test_merge_works_on_args_only_components():
     @Component
     def MyComp(a, b=2, /):
@@ -178,3 +208,39 @@ def CompWithMixedArgs(a, b=2, *, c, d=4):
 )
 def test_comp_with_mixed_args(comp, expected):
     assert str(comp) == expected
+
+
+@Component
+def CompWithKwargs(a, b, **kwargs):
+    return html.Div(a=a, b=b, **kwargs)
+
+
+def test_component_with_kwargs():
+    comp1 = CompWithKwargs(1, 2, c=3, d=4)
+    assert str(comp1) == """<div a="1" b="2" c="3" d="4"></div>"""
+
+    comp2 = CompWithKwargs(1, 2)
+    assert str(comp2) == """<div a="1" b="2"></div>"""
+
+
+def test_comp_with_kwargs_append():
+    comp = CompWithKwargs(1, 2).append(c=3, d=4)
+    assert str(comp) == """<div a="1" b="2" c="3" d="4"></div>"""
+
+
+def test_components_append_non_existing_prop():
+    @Component
+    def MyComp(a, b):
+        return html.Div(a=a, b=b)
+
+    with pytest.raises(
+        TypeError,
+        match=re.escape("MyComp() got an unexpected keyword argument: c"),
+    ):
+        MyComp(1, 2).append(c=3)
+
+    with pytest.raises(
+        TypeError,
+        match=re.escape("MyComp() got unexpected keyword arguments: c, d"),
+    ):
+        MyComp(1, 2).append(c=3, d=4)
