@@ -24,64 +24,22 @@ class ComponentClass(Protocol):
 
 
 class _ComponentBase:
-    _argnames: tuple[str]
-    _kwargnames: tuple[str]
-    _has_starkwargs: bool
+    _sig: inspect.Signature
+    _positional_args: set[str]
     _defaults: Optional[dict] = None
-    props: Optional[dict] = None
 
     def __init__(self, *args, **kwargs):
-        # TODO: use inspect.Signature.bind instead of these
-        self._check_args(args, kwargs)
-        self._check_kwargs(kwargs)
+        self._bound_args = self._sig.bind(*args, **kwargs)
+        self._bound_args.apply_defaults()
 
-        props = copy.deepcopy(self._defaults) if self._defaults else {}
-
-        if args:
-            for argname, argval in zip(self._argnames, args):
-                props[argname] = argval
-
-        props.update(kwargs)
-        self.props = props
-
-    def _check_args(self, args, kwargs):
-        if self.props is not None:
-            return
-
-        missing = len(self._argnames) - len(args)
-        name = self.__class__.__name__
-        if missing > 0 and len(self._defaults) < missing:
-            missing_names = self._argnames[-missing:]
-            if all((name in kwargs) for name in missing_names):
-                return
-            missing_names_list = ", ".join(missing_names)
-            plural = "s" if missing > 1 else ""
-            raise TypeError(
-                f"{name}() missing {missing} positional argument{plural}: {missing_names_list}"
-            )
-        elif missing < 0:
-            raise TypeError(
-                f"{name}() takes {len(self._argnames)} positional arguments but {len(args)} were given"
-            )
-
-    def _check_kwargs(self, kwargs):
-        if not kwargs or self._has_starkwargs:
-            return
-
-        if unexpected := set(kwargs) - set(self._argnames + self._kwargnames):
-            if len(unexpected) == 1:
-                message = "got an unexpected keyword argument"
-            else:
-                message = "got unexpected keyword arguments"
-            names = ", ".join(unexpected)
-            raise TypeError(f"{self.__class__.__name__}() {message}: {names}")
+    @property
+    def props(self) -> dict:
+        return {k: v for k, v in self._bound_args.arguments.items() if v is not None}
 
     def replace(self, **kwargs) -> CompSelf:
-        self._check_kwargs(kwargs)
         return self._merge(kwargs)
 
     def append(self, **kwargs) -> CompSelf:
-        self._check_kwargs(kwargs)
         appended = {}
         for key, val in kwargs.items():
             if key in self.props:
@@ -90,7 +48,6 @@ class _ComponentBase:
         return self._merge(appended)
 
     def merge(self, **kwargs) -> CompSelf:
-        self._check_kwargs(kwargs)
         if overlapping := [key for key in kwargs if key in self.props]:
             overlapping_keys = ", ".join(overlapping)
             raise KeyError(
@@ -120,8 +77,19 @@ class _ComponentBase:
         return Multiple()
 
     def _merge(self, kwargs) -> CompSelf:
-        merged_props = {**copy.deepcopy(self.props), **kwargs}
-        return self.__class__(**merged_props)
+        bound_copy = copy.deepcopy(self._bound_args)
+        # This will ignore any extra args not in the signature
+        # but include any extra kwargs, leaving kwargs empty...
+        bound_copy.arguments.update(kwargs)
+        extra_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in bound_copy.kwargs and k not in self._positional_args
+        }
+        new_kwargs = {**bound_copy.kwargs, **extra_kwargs}
+        new_bound = self._sig.bind(*bound_copy.args, **new_kwargs)
+        new_bound.apply_defaults()
+        return self.__class__(*new_bound.args, **new_bound.kwargs)
 
 
 class _ChildrenBase(_ComponentBase):
@@ -200,14 +168,13 @@ class _FuncComponent(_ChildrenBase):
     _pass_children: bool
 
     def _render(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
-        args = tuple(self.props[argname] for argname in self._argnames)
-        kwargs = {k: v for k, v in self.props.items() if k not in self._argnames}
+        kwargs = self._bound_args.kwargs
 
         if self._pass_children:
             kwargs["children"] = children
 
         # self.func is unbound
-        content = self.__class__._func(*args, **kwargs)
+        content = self.__class__._func(*self._bound_args.args, **kwargs)
         return content
 
 
@@ -217,7 +184,7 @@ class _ClassComponent(_ChildrenBase):
 
     @cached_property
     def _user_instance(self) -> ComponentClass:
-        return self._user_class(**self.props)
+        return self._user_class(*self._bound_args.args, **self._bound_args.kwargs)
 
     def _render(self, children: safe):
         if self._pass_children:
@@ -229,9 +196,7 @@ class _ClassComponent(_ChildrenBase):
 class _HTMLComponentBase(_ComponentBase):
     _html_tag: str
     _attributes = None
-    _argnames = ()
-    _kwargnames = ()
-    _has_starkwargs = True
+    _sig = inspect.signature(lambda **kwargs: None)
 
     def __init__(self, **kwargs):
         if self._attributes is not None:
@@ -319,46 +284,37 @@ def Component(
         raise TypeError("Components can only be classes or functions")
 
 
-def _make_defaults(argspec):
-    if argspec.varargs is not None:
-        # We cannot save props and .copy(), .append(), .replace() wouldn't work
-        raise TypeError("Components cannot have *args")
-
-    if not argspec.args and not argspec.kwonlyargs:
-        return None
-
-    props = {}
-
-    if argspec.defaults is not None:
-        # Defaults are only for the last arguments
-        names_with_defaults = argspec.args[-len(argspec.defaults) :]
-        argdefaults = dict(zip(names_with_defaults, argspec.defaults))
-        props.update(argdefaults)
-
-    if argspec.kwonlydefaults is not None:
-        kwdefaults = {k: v for k, v in argspec.kwonlydefaults.items() if v is not None}
-        props.update(kwdefaults)
-
-    return props
+def _make_sig(func):
+    sig = inspect.signature(func)
+    # This is only for caching in the class
+    positional_args = {
+        name
+        for name, param in sig.parameters.items()
+        if param.kind in {param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD}
+    }
+    return sig, positional_args
 
 
 def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
     if not hasattr(user_class, "render"):
         raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
 
-    init_argspec = inspect.getfullargspec(user_class.__init__)
-    init_argspec.args.remove("self")
-    render_argspec = inspect.getfullargspec(user_class.render)
-    pass_children = "children" in (render_argspec.args + render_argspec.kwonlyargs)
+    orig_sig, positional_args = _make_sig(user_class.__init__)
+    withour_passed = [
+        param
+        for key, param in orig_sig.parameters.items()
+        if key not in {"self", "children"}
+    ]
+    sig = inspect.Signature(parameters=withour_passed)
+    render_sig = inspect.signature(user_class.render)
+    pass_children = "children" in render_sig.parameters
     return type(
         user_class.__name__,
         (_ClassComponent,),
         dict(
             _user_class=user_class,
-            _argnames=tuple(init_argspec.args),
-            _kwargnames=tuple(init_argspec.kwonlyargs),
-            _has_starkwargs=init_argspec.varkw is not None,
-            _defaults=_make_defaults(init_argspec),
+            _sig=sig,
+            _positional_args=positional_args,
             _pass_children=pass_children,
             __module__=user_class.__module__,
         ),
@@ -366,17 +322,19 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
 
 
 def _make_func_component(func: Callable) -> Type[_FuncComponent]:
-    argspec = inspect.getfullargspec(func)
-    pass_children = "children" in argspec.kwonlyargs
+    orig_sig, positional_args = _make_sig(func)
+    without_children = [
+        param for key, param in orig_sig.parameters.items() if key != "children"
+    ]
+    sig = inspect.Signature(parameters=without_children)
+    pass_children = "children" in orig_sig.parameters
     return type(
         func.__name__,
         (_FuncComponent,),
         dict(
             _func=func,
-            _argnames=tuple(argspec.args),
-            _kwargnames=tuple(argspec.kwonlyargs),
-            _has_starkwargs=argspec.varkw is not None,
-            _defaults=_make_defaults(argspec),
+            _sig=sig,
+            _positional_args=positional_args,
             _pass_children=pass_children,
             __module__=func.__module__,
         ),
