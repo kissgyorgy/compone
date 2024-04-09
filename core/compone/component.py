@@ -3,6 +3,7 @@ import inspect
 import keyword
 from contextvars import ContextVar
 from functools import cached_property
+from types import MappingProxyType
 from typing import Callable, Iterable, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from .escape import escape, safe
@@ -34,7 +35,9 @@ class _ComponentBase:
 
     @property
     def props(self) -> dict:
-        return {k: v for k, v in self._bound_args.arguments.items() if v is not None}
+        return MappingProxyType(
+            {k: v for k, v in self._bound_args.arguments.items() if v is not None}
+        )
 
     def replace(self, **kwargs) -> CompSelf:
         return self._merge(kwargs)
@@ -197,6 +200,7 @@ class _HTMLComponentBase(_ComponentBase):
     _html_tag: str
     _attributes = None
     _sig = inspect.signature(lambda **kwargs: None)
+    _positional_args = set()
 
     def __init__(self, **kwargs):
         if self._attributes is not None:

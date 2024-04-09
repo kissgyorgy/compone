@@ -147,11 +147,10 @@ def test_args_saved_as_named_props():
     assert comp.props == {"a": 1, "b": 2}
 
 
-@pytest.mark.skip
-def test_props_can_be_mutated():
+def test_props_cannot_be_mutated():
     comp = CompWithArgsOnly(1, 2)
-    comp.props["a"] = 3
-    assert str(comp) == """<div a="3" b="2"></div>"""
+    with pytest.raises(TypeError):
+        comp.props["a"] = 3
 
 
 def test_append_works_on_args_only_components():
