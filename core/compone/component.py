@@ -172,7 +172,7 @@ class _PartialComponent(_ComponentApi):
         return self.__class__(self._comp_cls, *new_bound.args, **new_bound.kwargs)
 
     def __call__(self, **kwargs) -> CompSelf:
-        new_self = self.merge(**kwargs)
+        new_self = self._merge(kwargs)
         new_bound = new_self._bound_args
         return self._comp_cls(*new_bound.args, **new_bound.kwargs)
 

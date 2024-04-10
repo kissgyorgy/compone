@@ -1,7 +1,8 @@
 import pickle
+import re
 
 import pytest
-from compone import Component, html, safe
+from compone import Component, html
 
 
 @Component
@@ -12,6 +13,12 @@ def MyComponent(a, b):
 def test_partial_repr():
     PartialComp = MyComponent.partial(a=1, b=2)
     assert repr(PartialComp) == "<MyComponent.partial(a=1, b=2)>"
+
+
+def test_calling_partial_calls_replace():
+    PartialComp = MyComponent.partial(a=1)
+    comp = PartialComp(a=3, b=2)
+    assert str(comp) == """<div a="3" b="2"></div>"""
 
 
 def test_partial_raises_TypeError_on_rendering():
