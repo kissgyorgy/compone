@@ -24,16 +24,7 @@ class ComponentClass(Protocol):
         ...
 
 
-class _ComponentBase:
-    _sig: inspect.Signature
-    _positional_args: set[str]
-    _var_keyword: Optional[str]
-    _defaults: Optional[dict] = None
-
-    def __init__(self, *args, **kwargs):
-        self._bound_args = self._sig.bind(*args, **kwargs)
-        self._bound_args.apply_defaults()
-
+class _ComponentApi:
     @cached_property
     def props(self) -> dict:
         kwargs = {k: v for k, v in self._bound_args.kwargs.items() if v is not None}
@@ -58,35 +49,18 @@ class _ComponentBase:
         return self._merge(appended)
 
     def merge(self, **kwargs) -> CompSelf:
-        if overlapping := [key for key in kwargs if key in self.props]:
+        if overlapping := set(kwargs) & set(self.props):
             overlapping_keys = ", ".join(overlapping)
             raise KeyError(
                 f"{overlapping_keys} already specified in {self!r}, "
-                "use the replace method if you want to replace arguments"
+                "use the replace method if you want to replace props"
             )
         return self._merge(kwargs)
 
     def copy(self) -> CompSelf:
         return self._merge({})
 
-    def __repr__(self):
-        if self.props:
-            proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
-        else:
-            proplist = ""
-        return f"<{self.__class__.__name__}({proplist})>"
-
-    def __mul__(self, other: int) -> CompSelf:
-        if not isinstance(other, int):
-            return NotImplemented
-
-        # Every component is safe by default, so the result should be safe too
-        Multiple = Component(lambda: safe(self) * other)
-        Multiple.__name__ = "Multi" + self.__class__.__name__
-        Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
-        return Multiple()
-
-    def _merge(self, new_args) -> CompSelf:
+    def _merge_args(self, new_args) -> CompSelf:
         bound_copy = copy.deepcopy(self._bound_args)
 
         if self._var_keyword is None:
@@ -110,9 +84,103 @@ class _ComponentBase:
             if k not in bound_copy.kwargs and k not in self._positional_args
         }
         new_kwargs = {**bound_copy.kwargs, **extra_kwargs}
-        new_bound = self._sig.bind(*bound_copy.args, **new_kwargs)
-        new_bound.apply_defaults()
+        return bound_copy.args, new_kwargs
+
+
+class _ComponentBase(_ComponentApi):
+    _sig: inspect.Signature
+    _positional_args: set[str]
+    _var_keyword: Optional[str]
+
+    def __init__(self, *args, **kwargs):
+        self._bound_args = self._bind_args(*args, **kwargs)
+
+    def _bind_args(self, *args, **kwargs):
+        bound = self._sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+        return bound
+
+    def _merge(self, new_args) -> CompSelf:
+        new_args, new_kwargs = self._merge_args(new_args)
+        new_bound = self._bind_args(*new_args, **new_kwargs)
         return self.__class__(*new_bound.args, **new_bound.kwargs)
+
+    @classmethod
+    def partial(cls, *args, **kwargs) -> CompSelf:
+        return _PartialComponent(cls, *args, **kwargs)
+
+    @property
+    def is_partial(self) -> bool:
+        return False
+
+    def __call__(self, *args, **kwargs) -> CompSelf:
+        raise TypeError(
+            "Component is not partial, cannot be called. "
+            "Use the .merge() method instead."
+        )
+
+    def __repr__(self):
+        if self.props:
+            proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
+        else:
+            proplist = ""
+        return f"<{self.__class__.__name__}({proplist})>"
+
+    def __mul__(self, other: int) -> CompSelf:
+        if not isinstance(other, int):
+            return NotImplemented
+
+        # Every component is safe by default, so the result should be safe too
+        Multiple = Component(lambda: safe(self) * other)
+        Multiple.__name__ = "Multi" + self.__class__.__name__
+        Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
+        return Multiple()
+
+
+class _PartialComponent(_ComponentApi):
+    def __init__(self, comp_cls, *args, **kwargs):
+        self._comp_cls = comp_cls
+        self._bound_args = self._bind_args(*args, **kwargs)
+
+    @property
+    def _positional_args(self):
+        return self._comp_cls._positional_args
+
+    @property
+    def _var_keyword(self):
+        return self._comp_cls._var_keyword
+
+    def _bind_args(self, *args, **kwargs):
+        bound = self._comp_cls._sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        return bound
+
+    @property
+    def is_partial(self) -> bool:
+        return True
+
+    def _merge(self, new_args) -> CompSelf:
+        new_args, new_kwargs = self._merge_args(new_args)
+        new_bound = self._bind_args(*new_args, **new_kwargs)
+        return self.__class__(self._comp_cls, *new_bound.args, **new_bound.kwargs)
+
+    def __call__(self, **kwargs) -> CompSelf:
+        new_self = self.merge(**kwargs)
+        new_bound = new_self._bound_args
+        return self._comp_cls(*new_bound.args, **new_bound.kwargs)
+
+    def __repr__(self):
+        if self.props:
+            proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
+        else:
+            proplist = ""
+        return f"<{self._comp_cls.__name__}.partial({proplist})>"
+
+    def __str__(self):
+        raise TypeError(
+            "Partial Component cannot be rendered. Call it with the missing props"
+            " to make the full Component which can be rendered."
+        )
 
 
 class _ChildrenBase(_ComponentBase):
@@ -303,7 +371,7 @@ def _make_sig(func):
     return sig, positional_args
 
 
-def get_var_keyword(sig) -> Optional[str]:
+def _get_var_keyword(sig) -> Optional[str]:
     try:
         return next(p.name for p in sig.parameters.values() if p.kind == p.VAR_KEYWORD)
     except StopIteration:
@@ -330,7 +398,7 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
             _user_class=user_class,
             _sig=sig,
             _positional_args=positional_args,
-            _var_keyword=get_var_keyword(sig),
+            _var_keyword=_get_var_keyword(sig),
             _pass_children="children" in render_sig.parameters,
             __module__=user_class.__module__,
         ),
@@ -351,7 +419,7 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
             _func=func,
             _sig=sig,
             _positional_args=positional_args,
-            _var_keyword=get_var_keyword(orig_sig),
+            _var_keyword=_get_var_keyword(orig_sig),
             _pass_children="children" in orig_sig.parameters,
             __module__=func.__module__,
         ),
