@@ -224,6 +224,14 @@ def test_comp_with_kwargs_append():
     assert str(comp) == """<div a="1" b="2" c="3" d="4"></div>"""
 
 
+def test_comp_with_kwargs_replace():
+    comp = CompWithKwargs(1, 2).replace(a=3, b=4)
+    assert str(comp) == """<div a="3" b="4"></div>"""
+
+    comp2 = CompWithKwargs(1, 2).replace(a=3, b=4, c=5, d=6)
+    assert str(comp2) == """<div a="3" b="4" c="5" d="6"></div>"""
+
+
 def test_components_append_non_existing_prop():
     @Component
     def MyComp(a, b):

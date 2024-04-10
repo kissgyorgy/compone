@@ -27,17 +27,24 @@ class ComponentClass(Protocol):
 class _ComponentBase:
     _sig: inspect.Signature
     _positional_args: set[str]
+    _var_keyword: Optional[str]
     _defaults: Optional[dict] = None
 
     def __init__(self, *args, **kwargs):
         self._bound_args = self._sig.bind(*args, **kwargs)
         self._bound_args.apply_defaults()
 
-    @property
+    @cached_property
     def props(self) -> dict:
-        return MappingProxyType(
-            {k: v for k, v in self._bound_args.arguments.items() if v is not None}
-        )
+        kwargs = {k: v for k, v in self._bound_args.kwargs.items() if v is not None}
+        args = {
+            k: v
+            for k, v in self._bound_args.arguments.items()
+            if k not in kwargs and v is not None
+        }
+        if self._var_keyword is not None:
+            del args[self._var_keyword]
+        return MappingProxyType({**args, **kwargs})
 
     def replace(self, **kwargs) -> CompSelf:
         return self._merge(kwargs)
@@ -79,14 +86,27 @@ class _ComponentBase:
         Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
         return Multiple()
 
-    def _merge(self, kwargs) -> CompSelf:
+    def _merge(self, new_args) -> CompSelf:
         bound_copy = copy.deepcopy(self._bound_args)
-        # This will ignore any extra args not in the signature
-        # but include any extra kwargs, leaving kwargs empty...
-        bound_copy.arguments.update(kwargs)
+
+        if self._var_keyword is None:
+            bound_copy.arguments.update(new_args)
+        else:
+            bound_kwargs = bound_copy.arguments[self._var_keyword]
+
+            kwargs_to_update = {k: v for k, v in new_args.items() if k in bound_kwargs}
+            bound_kwargs.update(kwargs_to_update)
+
+            other_args = {
+                k: v for k, v in new_args.items() if k not in kwargs_to_update
+            }
+            bound_copy.arguments.update(other_args)
+
+        # This is to add new kwargs that was not specified before
+        # It will raise TypeError for args not in self._sig
         extra_kwargs = {
             k: v
-            for k, v in kwargs.items()
+            for k, v in new_args.items()
             if k not in bound_copy.kwargs and k not in self._positional_args
         }
         new_kwargs = {**bound_copy.kwargs, **extra_kwargs}
@@ -200,30 +220,17 @@ class _HTMLComponentBase(_ComponentBase):
     _html_tag: str
     _attributes = None
     _sig = inspect.signature(lambda **kwargs: None)
+    _var_keyword = "kwargs"
     _positional_args = set()
 
     def __init__(self, **kwargs):
         if self._attributes is not None:
             kwargs.update(self._attributes)
         self._original_kwargs = kwargs
+        super().__init__(**kwargs)
 
-        new_kwargs, self._keyval_args, self._bool_args = self._convert_kwargs(kwargs)
-        super().__init__(**new_kwargs)
-
-    def replace(self, **kwargs) -> CompSelf:
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().replace(**converted)
-
-    def append(self, **kwargs) -> CompSelf:
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().append(**converted)
-
-    def merge(self, **kwargs) -> CompSelf:
-        converted, _, _ = self._convert_kwargs(kwargs)
-        return super().merge(**converted)
-
-    def _convert_kwargs(self, kwargs) -> Tuple[dict, dict, list]:
-        new_kwargs = {}
+    @staticmethod
+    def _convert_kwargs(kwargs) -> Tuple[dict, dict, list]:
         keyval_args = {}
         bool_args = []
 
@@ -231,7 +238,6 @@ class _HTMLComponentBase(_ComponentBase):
             if isinstance(val, str) and '"' in val and "'" in val:
                 raise ValueError("Both single and double quotes in attribute value")
             elif keyword.iskeyword(no_underscore := key[:-1]):
-                new_kwargs[no_underscore] = val
                 keyval_args[no_underscore] = val
             elif isinstance(val, bool):
                 if val:
@@ -240,19 +246,17 @@ class _HTMLComponentBase(_ComponentBase):
                     # must not include in the output
                     continue
             else:
-                new_kwargs[key] = val
                 keyval_args[key] = val
 
-        return new_kwargs, keyval_args, bool_args
+        return keyval_args, bool_args
 
     def _get_attributes(self) -> str:
+        keyval_args, bool_args = self._convert_kwargs(self.props)
         conv = lambda s: escape(str(s).replace("_", "-"))
-        bool_args = " ".join(conv(a) for a in self._bool_args)
+        bool_args = " ".join(conv(a) for a in bool_args)
         bool_args = " " + bool_args if bool_args else ""
         kv_args = []
-        for k, v in self._keyval_args.items():
-            if v is None:
-                continue
+        for k, v in keyval_args.items():
             html_key = conv(k)
             html_val = escape(v)
             if '"' in html_val:
@@ -299,19 +303,26 @@ def _make_sig(func):
     return sig, positional_args
 
 
+def get_var_keyword(sig) -> Optional[str]:
+    try:
+        return next(p.name for p in sig.parameters.values() if p.kind == p.VAR_KEYWORD)
+    except StopIteration:
+        return None
+
+
 def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
     if not hasattr(user_class, "render"):
         raise TypeError(f"{user_class.__name__} doesn't have a .render() method.")
 
     orig_sig, positional_args = _make_sig(user_class.__init__)
-    withour_passed = [
+    without_passed = [
         param
         for key, param in orig_sig.parameters.items()
         if key not in {"self", "children"}
     ]
-    sig = inspect.Signature(parameters=withour_passed)
+    sig = inspect.Signature(parameters=without_passed)
     render_sig = inspect.signature(user_class.render)
-    pass_children = "children" in render_sig.parameters
+
     return type(
         user_class.__name__,
         (_ClassComponent,),
@@ -319,7 +330,8 @@ def _make_class_component(user_class: ComponentClass) -> Type[_ClassComponent]:
             _user_class=user_class,
             _sig=sig,
             _positional_args=positional_args,
-            _pass_children=pass_children,
+            _var_keyword=get_var_keyword(sig),
+            _pass_children="children" in render_sig.parameters,
             __module__=user_class.__module__,
         ),
     )
@@ -331,7 +343,7 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
         param for key, param in orig_sig.parameters.items() if key != "children"
     ]
     sig = inspect.Signature(parameters=without_children)
-    pass_children = "children" in orig_sig.parameters
+
     return type(
         func.__name__,
         (_FuncComponent,),
@@ -339,7 +351,8 @@ def _make_func_component(func: Callable) -> Type[_FuncComponent]:
             _func=func,
             _sig=sig,
             _positional_args=positional_args,
-            _pass_children=pass_children,
+            _var_keyword=get_var_keyword(orig_sig),
+            _pass_children="children" in orig_sig.parameters,
             __module__=func.__module__,
         ),
     )
