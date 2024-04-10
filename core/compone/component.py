@@ -61,7 +61,10 @@ class _ComponentApi:
         return self._merge({})
 
     def _merge_args(self, new_args) -> CompSelf:
-        bound_copy = copy.deepcopy(self._bound_args)
+        arguments_copy = {
+            k: copy.copy(v) for k, v in self._bound_args.arguments.items()
+        }
+        bound_copy = inspect.BoundArguments(self._sig, arguments_copy)
 
         if self._var_keyword is None:
             bound_copy.arguments.update(new_args)
@@ -143,6 +146,10 @@ class _PartialComponent(_ComponentApi):
         self._bound_args = self._bind_args(*args, **kwargs)
 
     @property
+    def _sig(self):
+        return self._comp_cls._sig
+
+    @property
     def _positional_args(self):
         return self._comp_cls._positional_args
 
@@ -178,7 +185,7 @@ class _PartialComponent(_ComponentApi):
 
     def __str__(self):
         raise TypeError(
-            "Partial Component cannot be rendered. Call it with the missing props"
+            f"Partial Component {self!r} cannot be rendered. Call it with the missing props"
             " to make the full Component which can be rendered."
         )
 
