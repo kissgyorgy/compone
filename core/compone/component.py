@@ -327,19 +327,31 @@ class _HTMLComponentBase(_ComponentBase):
         if self._attributes is not None:
             kwargs.update(self._attributes)
         self._original_kwargs = kwargs
+        self._convert_class(kwargs)
         super().__init__(**kwargs)
 
     @staticmethod
-    def _convert_kwargs(kwargs) -> Tuple[dict, dict, list]:
+    def _convert_class(kwargs) -> list:
+        class_ = kwargs.get("class_", None)
+        if isinstance(class_, str):
+            kwargs["class_"] = class_.split()
+        elif isinstance(class_, (list, tuple)):
+            kwargs["class_"] = [c.strip() for c in class_]
+
+    @classmethod
+    def _convert_kwargs(cls, kwargs) -> Tuple[dict, dict, list]:
         keyval_args = {}
         bool_args = []
 
         for key, val in kwargs.items():
             if isinstance(val, str) and '"' in val and "'" in val:
                 raise ValueError("Both single and double quotes in attribute value")
-            elif keyword.iskeyword(no_underscore := key[:-1]):
-                keyval_args[no_underscore] = val
-            elif isinstance(val, bool):
+            if keyword.iskeyword(no_underscore := key[:-1]):
+                key = no_underscore
+            if isinstance(val, (list, tuple)):
+                val = " ".join(str(e) for e in val)
+
+            if isinstance(val, bool):
                 if val:
                     bool_args.append(key)
                 else:
@@ -350,6 +362,10 @@ class _HTMLComponentBase(_ComponentBase):
 
         return keyval_args, bool_args
 
+    def append(self, **kwargs) -> CompSelf:
+        self._convert_class(kwargs)
+        return super().append(**kwargs)
+
     def _get_attributes(self) -> str:
         keyval_args, bool_args = self._convert_kwargs(self.props)
         conv = lambda s: escape(str(s).replace("_", "-"))
@@ -357,6 +373,8 @@ class _HTMLComponentBase(_ComponentBase):
         bool_args = " " + bool_args if bool_args else ""
         kv_args = []
         for k, v in keyval_args.items():
+            if isinstance(v, (list, tuple)):
+                v = " ".join(conv(i) for i in v)
             html_key = conv(k)
             html_val = escape(v)
             if '"' in html_val:
