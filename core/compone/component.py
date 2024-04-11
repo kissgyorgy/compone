@@ -1,3 +1,4 @@
+import abc
 import copy
 import inspect
 import keyword
@@ -24,7 +25,26 @@ class ComponentClass(Protocol):
         ...
 
 
-class _ComponentApi:
+class _ComponentApi(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def _make_new(self, new_args) -> CompSelf:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def _sig(self) -> Optional[str]:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def _positional_args(self) -> Optional[str]:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def _var_keyword(self) -> Optional[str]:
+        ...
+
     @cached_property
     def props(self) -> dict:
         kwargs = {k: v for k, v in self._bound_args.kwargs.items() if v is not None}
@@ -38,7 +58,7 @@ class _ComponentApi:
         return MappingProxyType({**args, **kwargs})
 
     def replace(self, **kwargs) -> CompSelf:
-        return self._merge(kwargs)
+        return self._make_new(kwargs)
 
     def append(self, **kwargs) -> CompSelf:
         appended = {}
@@ -46,7 +66,7 @@ class _ComponentApi:
             if key in self.props:
                 val = self.props[key] + val
             appended[key] = val
-        return self._merge(appended)
+        return self._make_new(appended)
 
     def merge(self, **kwargs) -> CompSelf:
         if overlapping := set(kwargs) & set(self.props):
@@ -55,10 +75,10 @@ class _ComponentApi:
                 f"{overlapping_keys} already specified in {self!r}, "
                 "use the replace method if you want to replace props"
             )
-        return self._merge(kwargs)
+        return self._make_new(kwargs)
 
     def copy(self) -> CompSelf:
-        return self._merge({})
+        return self._make_new({})
 
     def _merge_args(self, new_args) -> CompSelf:
         arguments_copy = {
@@ -103,7 +123,7 @@ class _ComponentBase(_ComponentApi):
         bound.apply_defaults()
         return bound
 
-    def _merge(self, new_args) -> CompSelf:
+    def _make_new(self, new_args) -> CompSelf:
         new_args, new_kwargs = self._merge_args(new_args)
         new_bound = self._bind_args(*new_args, **new_kwargs)
         return self.__class__(*new_bound.args, **new_bound.kwargs)
@@ -166,7 +186,7 @@ class _PartialComponent(_ComponentApi):
     def is_partial(self) -> bool:
         return True
 
-    def _merge(self, new_args) -> CompSelf:
+    def _make_new(self, new_args) -> CompSelf:
         new_args, new_kwargs = self._merge_args(new_args)
         new_bound = self._bind_args(*new_args, **new_kwargs)
         return self.__class__(self._comp_cls, *new_bound.args, **new_bound.kwargs)
@@ -177,7 +197,7 @@ class _PartialComponent(_ComponentApi):
             raise TypeError(
                 f"Partial Component {self!r} got multiple values for '{', '.join(common)}'"
             )
-        new_self = self._merge({**new_args, **kwargs})
+        new_self = self._make_new({**new_args, **kwargs})
         new_bound = new_self._bound_args
         return self._comp_cls(*new_bound.args, **new_bound.kwargs)
 
