@@ -92,7 +92,7 @@ class _ComponentApi:
 
 class _ComponentBase(_ComponentApi):
     _sig: inspect.Signature
-    _positional_args: set[str]
+    _positional_args: list[str]
     _var_keyword: Optional[str]
 
     def __init__(self, *args, **kwargs):
@@ -171,8 +171,13 @@ class _PartialComponent(_ComponentApi):
         new_bound = self._bind_args(*new_args, **new_kwargs)
         return self.__class__(self._comp_cls, *new_bound.args, **new_bound.kwargs)
 
-    def __call__(self, **kwargs) -> CompSelf:
-        new_self = self._merge(kwargs)
+    def __call__(self, *args, **kwargs) -> CompSelf:
+        new_args = {name: newval for name, newval in zip(self._positional_args, args)}
+        if common := (set(new_args) & set(kwargs)):
+            raise TypeError(
+                f"Partial Component {self!r} got multiple values for '{', '.join(common)}'"
+            )
+        new_self = self._merge({**new_args, **kwargs})
         new_bound = new_self._bound_args
         return self._comp_cls(*new_bound.args, **new_bound.kwargs)
 
@@ -296,7 +301,7 @@ class _HTMLComponentBase(_ComponentBase):
     _attributes = None
     _sig = inspect.signature(lambda **kwargs: None)
     _var_keyword = "kwargs"
-    _positional_args = set()
+    _positional_args = []
 
     def __init__(self, **kwargs):
         if self._attributes is not None:
@@ -370,11 +375,11 @@ def Component(
 def _make_sig(func):
     sig = inspect.signature(func)
     # This is only for caching in the class
-    positional_args = {
+    positional_args = [
         name
         for name, param in sig.parameters.items()
         if param.kind in {param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD}
-    }
+    ]
     return sig, positional_args
 
 

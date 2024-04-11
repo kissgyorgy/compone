@@ -81,3 +81,26 @@ def test_unpickable_object():
     PartialComp = MyComponent.partial(a=Unpickable())
     comp = PartialComp(b=2)
     assert str(comp) == """<div a="Unpickable" b="2"></div>"""
+
+
+def test_can_be_called_with_args():
+    PartialComp = MyComponent.partial(1, 2)
+    comp = PartialComp(3, 4)
+    assert str(comp) == """<div a="3" b="4"></div>"""
+
+
+def test_partial_with_no_args():
+    PartialComp = MyComponent.partial()
+    comp = PartialComp(3, 4)
+    assert str(comp) == """<div a="3" b="4"></div>"""
+
+
+def test_passing_same_argument_multiple_time_raises_TypeError():
+    PartialComp = MyComponent.partial(a=1, b=2)
+    with pytest.raises(
+        TypeError,
+        match=re.escape(
+            "Partial Component <MyComponent.partial(a=1, b=2)> got multiple values for 'a'"
+        ),
+    ):
+        PartialComp(3, a=4, b=4)
