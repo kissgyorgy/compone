@@ -18,7 +18,7 @@ def test_old_instance_not_affected_on_append():
 def test_old_instance_not_affected_on_copy():
     arg1 = [1, 2, 3]
     comp1 = MyComp(a=arg1)
-    comp2 = comp1.copy()
+    comp2 = comp1()
 
     arg1.append(4)
     assert str(comp1) == "Some component 1, 2, 3, 4"

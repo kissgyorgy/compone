@@ -5,12 +5,47 @@ from compone import Component, html
 
 
 @Component
+def CompWithArgs(a, b):
+    return html.Div(a=a, b=b)
+
+
+@Component
+def CompWithArgsOnly(a, b, /):
+    return html.Div(a=a, b=b)
+
+
+@Component
 def IntDefaultsComp(*, a=1, b=2):
     return html.Div(a=a, b=b)
 
 
 @Component
 def StrDefaultsComp(*, a="alma", b="korte"):
+    return html.Div(a=a, b=b)
+
+
+@Component
+class ClassCompIntDefaults:
+    def __init__(self, *, a=1, b=2):
+        self.a = a
+        self.b = b
+
+    def render(self):
+        return html.Div(a=self.a, b=self.b)
+
+
+@Component
+class ClassCompStrDefaults:
+    def __init__(self, *, a="alma", b="korte"):
+        self.a = a
+        self.b = b
+
+    def render(self):
+        return html.Div(a=self.a, b=self.b)
+
+
+@Component
+def NoneDefaultsComp(*, a=None, b=2):
     return html.Div(a=a, b=b)
 
 
@@ -66,26 +101,6 @@ class TestFuncDefaults:
             IntDefaultsComp().append(a="barack")
 
 
-@Component
-class ClassCompIntDefaults:
-    def __init__(self, *, a=1, b=2):
-        self.a = a
-        self.b = b
-
-    def render(self):
-        return html.Div(a=self.a, b=self.b)
-
-
-@Component
-class ClassCompStrDefaults:
-    def __init__(self, *, a="alma", b="korte"):
-        self.a = a
-        self.b = b
-
-    def render(self):
-        return html.Div(a=self.a, b=self.b)
-
-
 class TestClassDefaults:
     def test_defaults_kept(self):
         comp = ClassCompIntDefaults()
@@ -120,26 +135,19 @@ class TestClassDefaults:
             ClassCompIntDefaults().append(a="barack")
 
     def test_None_is_not_kept_as_default(self):
-        @Component
-        def NoneDefaultsComp(*, a=None, b=2):
-            return html.Div(a=a, b=b)
-
         comp1 = NoneDefaultsComp()
         assert str(comp1) == """<div b="2"></div>"""
 
-        # shold not raise TypeError
-        comp2 = NoneDefaultsComp().append(a=3)
-        assert str(comp2) == """<div a="3" b="2"></div>"""
+        with pytest.raises(
+            TypeError,
+            match=re.escape("<NoneDefaultsComp(b=2)> has no existing props for 'a'"),
+        ):
+            NoneDefaultsComp().append(a=3)
 
 
 def test_None_is_not_rendered_for_html_components():
     comp = html.Div(a=None, b=1)
     assert str(comp) == """<div b="1"></div>"""
-
-
-@Component
-def CompWithArgsOnly(a, b, /):
-    return html.Div(a=a, b=b)
 
 
 def test_args_saved_as_named_props():
@@ -219,11 +227,6 @@ def test_component_with_kwargs():
     assert str(comp2) == """<div a="1" b="2"></div>"""
 
 
-def test_comp_with_kwargs_append():
-    comp = CompWithKwargs(1, 2).append(c=3, d=4)
-    assert str(comp) == """<div a="1" b="2" c="3" d="4"></div>"""
-
-
 def test_comp_with_kwargs_replace():
     comp = CompWithKwargs(1, 2).replace(a=3, b=4)
     assert str(comp) == """<div a="3" b="4"></div>"""
@@ -233,27 +236,31 @@ def test_comp_with_kwargs_replace():
 
 
 def test_components_append_non_existing_prop():
-    @Component
-    def MyComp(a, b):
-        return html.Div(a=a, b=b)
+    with pytest.raises(
+        TypeError,
+        match=re.escape("<CompWithArgs(a=1, b=2)> has no existing props for 'c'"),
+    ):
+        CompWithArgs(1, 2).append(c=3)
 
-    with pytest.raises(TypeError, match=".*unexpected keyword argument"):
-        MyComp(1, 2).append(c=3)
-
-    with pytest.raises(TypeError, match=".*unexpected keyword argument"):
-        MyComp(1, 2).append(c=3, d=4)
+    with pytest.raises(
+        TypeError,
+        match=re.escape("<CompWithArgs(a=1, b=2)> has no existing props for 'c', 'd'"),
+    ):
+        CompWithArgs(1, 2).append(c=3, d=4)
 
 
 def test_replace_raise_TypeError_for_non_existing_prop():
-    @Component
-    def MyComp(a, b):
-        return html.Div(a=a, b=b)
+    with pytest.raises(
+        TypeError,
+        match=re.escape("<CompWithArgs(a=1, b=2)> has no existing props for 'c'"),
+    ):
+        CompWithArgs(1, 2).replace(c=3)
 
-    with pytest.raises(TypeError, match=".*unexpected keyword argument"):
-        MyComp(1, 2).replace(c=3)
-
-    with pytest.raises(TypeError, match=".*unexpected keyword argument"):
-        MyComp(1, 2).replace(c=3, d=4)
+    with pytest.raises(
+        TypeError,
+        match=re.escape("<CompWithArgs(a=1, b=2)> has no existing props for 'c', 'd'"),
+    ):
+        CompWithArgs(1, 2).replace(c=3, d=4)
 
 
 def test_class_list():
@@ -284,3 +291,13 @@ def test_class_str_and_list_can_be_mixed():
     div4 = html.Div(class_=["alma", "korte"])
     div5 = div4.append(class_="barack")
     assert str(div5) == """<div class="alma korte barack"></div>"""
+
+
+def test_passing_same_argument_multiple_time_raises_TypeError():
+    with pytest.raises(TypeError, match="multiple values for argument 'a'"):
+        CompWithArgs(3, a=4, b=4)
+
+
+def test_replace_must_have_existing_props():
+    with pytest.raises(TypeError, match="has no existing props for 'c'"):
+        CompWithKwargs(1, 2).replace(c=3)

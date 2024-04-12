@@ -1,5 +1,4 @@
 import pytest
-
 from compone import html, safe
 
 

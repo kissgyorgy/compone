@@ -1,8 +1,7 @@
 import datetime as dt
 
-from flask import Flask
-
 from compone import html
+from flask import Flask
 
 from .components import Counter, Layout, Page
 

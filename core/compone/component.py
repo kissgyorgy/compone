@@ -1,11 +1,10 @@
-import abc
 import copy
 import inspect
 import keyword
 from contextvars import ContextVar
 from functools import cached_property
 from types import MappingProxyType
-from typing import Callable, Iterable, Optional, Protocol, Tuple, Type, TypeVar, Union
+from typing import Callable, Iterable, Optional, Protocol, Type, TypeVar, Union
 
 from .escape import escape, safe
 from .utils import _is_iterable
@@ -25,25 +24,18 @@ class ComponentClass(Protocol):
         ...
 
 
-class _ComponentApi(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def _make_new(self, new_args) -> CompSelf:
-        ...
+class _ComponentBase:
+    _sig: inspect.Signature
+    _positional_args: list[str]
+    _var_keyword: Optional[str]
 
-    @property
-    @abc.abstractmethod
-    def _sig(self) -> Optional[str]:
-        ...
+    def __init__(self, *args, **kwargs):
+        self._bound_args = self._bind_args(*args, **kwargs)
 
-    @property
-    @abc.abstractmethod
-    def _positional_args(self) -> Optional[str]:
-        ...
-
-    @property
-    @abc.abstractmethod
-    def _var_keyword(self) -> Optional[str]:
-        ...
+    def _bind_args(self, *args, **kwargs):
+        bound = self._sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+        return bound
 
     @cached_property
     def props(self) -> dict:
@@ -58,89 +50,55 @@ class _ComponentApi(metaclass=abc.ABCMeta):
         return MappingProxyType({**args, **kwargs})
 
     def replace(self, **kwargs) -> CompSelf:
+        self._check_common_props(kwargs)
         return self._make_new(kwargs)
 
     def append(self, **kwargs) -> CompSelf:
-        appended = {}
-        for key, val in kwargs.items():
-            if key in self.props:
-                val = self.props[key] + val
-            appended[key] = val
+        self._check_common_props(kwargs)
+        appended = {key: (self.props[key] + val) for key, val in kwargs.items()}
+        print(appended)
         return self._make_new(appended)
 
-    def merge(self, **kwargs) -> CompSelf:
-        if overlapping := set(kwargs) & set(self.props):
-            overlapping_keys = ", ".join(overlapping)
-            raise KeyError(
-                f"{overlapping_keys} already specified in {self!r}, "
-                "use the replace method if you want to replace props"
-            )
-        return self._make_new(kwargs)
+    def _check_common_props(self, kwargs):
+        if not set(kwargs) & set(self.props):
+            kwargs_list = ", ".join(repr(k) for k in kwargs.keys())
+            raise TypeError(f"{self!r} has no existing props for {kwargs_list}")
 
-    def copy(self) -> CompSelf:
-        return self._make_new({})
+    def __call__(self, *args, **kwargs) -> CompSelf:
+        # Replaces existing props, set new ones
+        args_only = {name: newval for name, newval in zip(self._positional_args, args)}
+        return self._make_new({**args_only, **kwargs})
 
-    def _merge_args(self, new_args) -> CompSelf:
+    def _make_new(self, new_arguments) -> CompSelf:
         arguments_copy = {
             k: copy.copy(v) for k, v in self._bound_args.arguments.items()
         }
         bound_copy = inspect.BoundArguments(self._sig, arguments_copy)
 
         if self._var_keyword is None:
-            bound_copy.arguments.update(new_args)
+            bound_copy.arguments.update(new_arguments)
         else:
-            bound_kwargs = bound_copy.arguments[self._var_keyword]
-
-            kwargs_to_update = {k: v for k, v in new_args.items() if k in bound_kwargs}
-            bound_kwargs.update(kwargs_to_update)
-
-            other_args = {
-                k: v for k, v in new_args.items() if k not in kwargs_to_update
+            old_star_arguments = bound_copy.arguments[self._var_keyword]
+            new_star_arguments = {
+                k: v for k, v in new_arguments.items() if k in old_star_arguments
             }
-            bound_copy.arguments.update(other_args)
+            old_star_arguments.update(new_star_arguments)
+
+            other_arguments = {
+                k: v for k, v in new_arguments.items() if k not in new_star_arguments
+            }
+            bound_copy.arguments.update(other_arguments)
 
         # This is to add new kwargs that was not specified before
         # It will raise TypeError for args not in self._sig
         extra_kwargs = {
             k: v
-            for k, v in new_args.items()
+            for k, v in new_arguments.items()
             if k not in bound_copy.kwargs and k not in self._positional_args
         }
         new_kwargs = {**bound_copy.kwargs, **extra_kwargs}
-        return bound_copy.args, new_kwargs
-
-
-class _ComponentBase(_ComponentApi):
-    _sig: inspect.Signature
-    _positional_args: list[str]
-    _var_keyword: Optional[str]
-
-    def __init__(self, *args, **kwargs):
-        self._bound_args = self._bind_args(*args, **kwargs)
-
-    def _bind_args(self, *args, **kwargs):
-        bound = self._sig.bind(*args, **kwargs)
-        bound.apply_defaults()
-        return bound
-
-    def _make_new(self, new_args) -> CompSelf:
-        new_args, new_kwargs = self._merge_args(new_args)
-        new_bound = self._bind_args(*new_args, **new_kwargs)
+        new_bound = self._bind_args(*bound_copy.args, **new_kwargs)
         return self.__class__(*new_bound.args, **new_bound.kwargs)
-
-    @classmethod
-    def partial(cls, *args, **kwargs) -> CompSelf:
-        return _PartialComponent(cls, *args, **kwargs)
-
-    @property
-    def is_partial(self) -> bool:
-        return False
-
-    def __call__(self, *args, **kwargs) -> CompSelf:
-        raise TypeError(
-            "Component is not partial, cannot be called. "
-            "Use the .merge() method instead."
-        )
 
     def __repr__(self):
         if self.props:
@@ -158,61 +116,6 @@ class _ComponentBase(_ComponentApi):
         Multiple.__name__ = "Multi" + self.__class__.__name__
         Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
         return Multiple()
-
-
-class _PartialComponent(_ComponentApi):
-    def __init__(self, comp_cls, *args, **kwargs):
-        self._comp_cls = comp_cls
-        self._bound_args = self._bind_args(*args, **kwargs)
-
-    @property
-    def _sig(self):
-        return self._comp_cls._sig
-
-    @property
-    def _positional_args(self):
-        return self._comp_cls._positional_args
-
-    @property
-    def _var_keyword(self):
-        return self._comp_cls._var_keyword
-
-    def _bind_args(self, *args, **kwargs):
-        bound = self._comp_cls._sig.bind_partial(*args, **kwargs)
-        bound.apply_defaults()
-        return bound
-
-    @property
-    def is_partial(self) -> bool:
-        return True
-
-    def _make_new(self, new_args) -> CompSelf:
-        new_args, new_kwargs = self._merge_args(new_args)
-        new_bound = self._bind_args(*new_args, **new_kwargs)
-        return self.__class__(self._comp_cls, *new_bound.args, **new_bound.kwargs)
-
-    def __call__(self, *args, **kwargs) -> CompSelf:
-        new_args = {name: newval for name, newval in zip(self._positional_args, args)}
-        if common := (set(new_args) & set(kwargs)):
-            raise TypeError(
-                f"Partial Component {self!r} got multiple values for '{', '.join(common)}'"
-            )
-        new_self = self._make_new({**new_args, **kwargs})
-        new_bound = new_self._bound_args
-        return self._comp_cls(*new_bound.args, **new_bound.kwargs)
-
-    def __repr__(self):
-        if self.props:
-            proplist = ", ".join(f"{k}={v!r}" for k, v in self.props.items())
-        else:
-            proplist = ""
-        return f"<{self._comp_cls.__name__}.partial({proplist})>"
-
-    def __str__(self):
-        raise TypeError(
-            f"Partial Component {self!r} cannot be rendered. Call it with the missing props"
-            " to make the full Component which can be rendered."
-        )
 
 
 class _ChildrenBase(_ComponentBase):
@@ -243,8 +146,9 @@ class _ChildrenBase(_ComponentBase):
 
     def __getitem__(self, children) -> safe:
         if self._children:
-            # Not AttributeError because it would be confusing, for ex. when using hasattr.
-            # Also this is like a function call, so a ValueError makes sense
+            # Not AttributeError because it would be confusing,
+            # for example when using hasattr.
+            # Also this is like a function call, so ValueError makes sense
             raise ValueError(
                 "Component already has children, "
                 "use the += operator if you want to add more."
@@ -258,7 +162,7 @@ class _ChildrenBase(_ComponentBase):
         else:
             children = (children,)
 
-        new = self.copy()
+        new = self.__class__(*self._bound_args.args, **self._bound_args.kwargs)
         new._children = children
         return new
 
@@ -291,6 +195,7 @@ class _FuncComponent(_ChildrenBase):
     _pass_children: bool
 
     def _render(self, children: safe) -> Union[ContentType, Iterable[ContentType]]:
+        # BoundArguments.kwargs is a property, this makes a copy
         kwargs = self._bound_args.kwargs
 
         if self._pass_children:

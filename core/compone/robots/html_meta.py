@@ -22,7 +22,8 @@ def MetaTag(
     See:
       - https://www.robotstxt.org/meta.html
       - https://en.wikipedia.org/wiki/Meta_element#The_robots_attribute
-    """
+    """  # noqa: E501
+
     directives = []
     for directive, novalue in [
         (index, "noindex"),
