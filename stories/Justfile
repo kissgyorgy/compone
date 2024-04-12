@@ -1,2 +1,12 @@
+node_bin := "node_modules/.bin"
+
+help:
+    @just --list
+
+# Install npm dependencies
+install:
+    bun install
+
+# Generate stories.css with tailwind continuously, reloading when files changed
 gencss:
-    bun x tailwindcss -i stories.css -o compone_stories/static/stories.css --watch
+    {{node_bin}}/tailwindcss -i stories.css -o compone_stories/static/stories.css --watch
