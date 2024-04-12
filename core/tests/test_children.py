@@ -48,3 +48,20 @@ def test_children_accessible_for_children_components():
 def test_cannot_make_new_component_with_children():
     with pytest.raises(ValueError):
         WithChildren["Hello"]()
+
+
+def test_child_components_are_comparable():
+    ch1 = WithChildren["Hello"]
+    ch2 = WithChildren["Hello"]
+    ch3 = WithChildren["World"]
+
+    assert ch1 == ch2
+    assert ch2 != ch3
+
+    assert ch1 is not ch2
+    assert ch2 is not ch3
+
+    assert ch1.children == ch2.children
+    assert ch2.children != ch3.children
+
+    assert ch1.children is not ch2.children

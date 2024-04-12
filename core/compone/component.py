@@ -174,6 +174,14 @@ class _ChildrenBase(_ComponentBase):
             raise ValueError("Component already has children, cannot replace them.")
         return super().__call__(*args, **kwargs)
 
+    def __eq__(self, other):
+        if not isinstance(other, _ChildrenBase):
+            return NotImplemented
+        # This is the safest way to do this, because user-implemented,
+        # class-based Components can have different properties, which
+        # might render them differently. We can't compare those without rendering.
+        return str(self) == str(other)
+
     def __str__(self) -> safe:
         if not self._children:
             safe_children = safe("")
@@ -301,6 +309,15 @@ class _SelfClosingHTMLComponent(_HTMLComponentBase):
     def __str__(self) -> safe:
         attributes = self._get_attributes()
         return safe(f"<{self._html_tag}{attributes} />")
+
+    def __eq__(self, other):
+        if not isinstance(other, _SelfClosingHTMLComponent):
+            return NotImplemented
+        return (
+            # It's a little bit cheaper to compare this way than rendering
+            self._html_tag == other._html_tag
+            and self._original_kwargs == other._original_kwargs
+        )
 
 
 def Component(
