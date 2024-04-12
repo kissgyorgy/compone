@@ -56,7 +56,6 @@ class _ComponentBase:
     def append(self, **kwargs) -> CompSelf:
         self._check_common_props(kwargs)
         appended = {key: (self.props[key] + val) for key, val in kwargs.items()}
-        print(appended)
         return self._make_new(appended)
 
     def _check_common_props(self, kwargs):
