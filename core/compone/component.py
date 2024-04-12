@@ -165,6 +165,10 @@ class _ChildrenBase(_ComponentBase):
         new._children = children
         return new
 
+    @property
+    def children(self):
+        return tuple(self._children)
+
     def __str__(self) -> safe:
         if not self._children:
             safe_children = safe("")
