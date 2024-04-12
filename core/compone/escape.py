@@ -1,41 +1,26 @@
-from typing import Self
+from typing import Any
+
+from markupsafe import Markup
+from markupsafe import escape as markupsafe_escape
+
+__all__ = ["escape", "safe"]
+
+# Alias, because this is more generic than HTML and make sure
+# that the API is future proof in case we change implementation
+safe = Markup
+"""Exclude a string from autoescaping using Markupsafe."""
 
 
-class safe(str):
-    """Exclude a string from autoescaping."""
-
-    def __add__(self, other: str | Self):
-        if isinstance(other, self.__class__):
-            return self.__class__(str(self) + other)
-        return str(self) + other
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}("{str(self)}")'
-
-    def __mul__(self, other):
-        mul_str = super().__mul__(other)
-        return self.__class__(mul_str)
-
-
-def escape(s):
-    """Replace special characters to HTML-safe sequences.
-    Marks the resulting string as safe.
+def escape(s: Any) -> safe:
+    """Replace special characters to HTML/XML-safe sequences.
+    Marks the resulting string as safe with Markupsafe.
     """
-
     if isinstance(s, safe):
         return s
     elif s is None:
-        return safe("")
-    elif not isinstance(s, str):
-        s = str(s)
-        # __str__ method on the object returned safe
-        if isinstance(s, safe):
-            return s
+        return safe()
+    # We use the __str__ method instead of __html__
+    elif hasattr(s, "__str__"):
+        s = s.__str__()
 
-    s = s.replace("&", "&amp;")  # Must be done first!
-    s = s.replace("<", "&lt;")
-    s = s.replace(">", "&gt;")
-    s = s.replace('"', "&quot;")
-    s = s.replace("'", "&#x27;")
-
-    return safe(s)
+    return markupsafe_escape(s)

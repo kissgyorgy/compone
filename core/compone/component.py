@@ -183,25 +183,16 @@ class _ChildrenBase(_ComponentBase):
         return str(self) == str(other)
 
     def __str__(self) -> safe:
-        if not self._children:
-            safe_children = safe("")
-        else:
-            escaped_children = [self._escape(ch) for ch in self._children]
-            safe_children = safe("".join(escaped_children))
+        safe_children = self._escape(self._children) if self._children else safe()
         content = self._render(safe_children)
         return self._escape(content)
 
     @classmethod
     def _escape(cls, item) -> safe:
-        if isinstance(item, safe):
-            return item
-        elif isinstance(item, _ComponentBase):
-            return safe(item)
-        elif isinstance(item, str):
+        if isinstance(item, (str, _ComponentBase)):
             return escape(item)
         elif _is_iterable(item):
-            escaped = [cls._escape(e) for e in item]
-            return safe("".join(escaped))
+            return safe("".join(cls._escape(e) for e in item))
         else:
             return escape(item)
 

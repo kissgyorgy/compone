@@ -1,7 +1,6 @@
-from compone.escape import safe
-
 from .. import html
 from ..component import Component
+from ..escape import safe
 
 
 @Component
