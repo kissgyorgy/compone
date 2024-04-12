@@ -169,6 +169,11 @@ class _ChildrenBase(_ComponentBase):
     def children(self):
         return tuple(self._children)
 
+    def __call__(self, *args, **kwargs) -> CompSelf:
+        if self._children:
+            raise ValueError("Component already has children, cannot replace them.")
+        return super().__call__(*args, **kwargs)
+
     def __str__(self) -> safe:
         if not self._children:
             safe_children = safe("")
