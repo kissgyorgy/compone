@@ -8,9 +8,9 @@ check:
     ruff check .
 
 # Run tests with pytest
-test pytest-params="":
+test *pytest-params:
     {{ pytest }} {{ pytest-params }}
 
 # Run tests continuously and re-run them with watchexec if files changed
-watchtests pytest-params="":
+watchtests *pytest-params:
     watchexec --restart --exts py --stop-timeout 0 -- {{ pytest }} {{ pytest-params }}
