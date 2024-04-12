@@ -6,6 +6,7 @@ Generating robots.txt and meta tags for search engine crawlers. See:
 """
 
 import enum
+from typing import List, Optional
 
 from ..component import Component
 
@@ -24,7 +25,7 @@ class Bot(enum.Enum):
 
 
 @Component
-def RobotsTxt(*, children: list["Entry"]):
+def RobotsTxt(*, children: List["Entry"]):
     return children
 
 
@@ -32,10 +33,10 @@ def RobotsTxt(*, children: list["Entry"]):
 def Entry(
     *,
     user_agent: Bot,
-    disallow: list[str],
-    allow: list[str] = [],
-    crawdelay: int | None = None,
-    sitemap: str | None = None,
+    disallow: List[str],
+    allow: List[str] = [],
+    crawdelay: Optional[int] = None,
+    sitemap: Optional[str] = None,
 ):
     return [
         UserAgent(agent=user_agent),

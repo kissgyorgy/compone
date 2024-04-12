@@ -7,6 +7,9 @@ help:
 check:
     ruff check .
 
+test-versions *tox-params:
+    tox {{ tox-params }}
+
 # Run tests with pytest
 test *pytest-params:
     {{ pytest }} {{ pytest-params }}

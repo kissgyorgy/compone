@@ -4,7 +4,7 @@ import keyword
 from contextvars import ContextVar
 from functools import cached_property
 from types import MappingProxyType
-from typing import Callable, Iterable, Optional, Protocol, Type, TypeVar, Union
+from typing import Callable, Iterable, List, Optional, Protocol, Type, TypeVar, Union
 
 from .escape import escape, safe
 from .utils import _is_iterable
@@ -26,7 +26,7 @@ class ComponentClass(Protocol):
 
 class _ComponentBase:
     _sig: inspect.Signature
-    _positional_args: list[str]
+    _positional_args: List[str]
     _var_keyword: Optional[str]
 
     def __init__(self, *args, **kwargs):

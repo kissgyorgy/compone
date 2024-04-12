@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ..component import Component, _Elem, _SelfElem
 from ..escape import safe
 
@@ -12,9 +14,9 @@ Title = _Elem("title")
 def Meta(
     *,
     name: str,
-    http_equiv: str | None = None,
-    itemprop: str | None = None,
-    content: str | None = None,
+    http_equiv: Optional[str] = None,
+    itemprop: Optional[str] = None,
+    content: Optional[str] = None,
 ):
     kwargs = {"name": name}
     if http_equiv:
