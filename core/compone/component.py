@@ -338,53 +338,44 @@ class _HTMLComponentBase(_ComponentBase):
         elif isinstance(class_, (list, tuple)):
             kwargs["class_"] = [c.strip() for c in class_]
 
-    @classmethod
-    def _convert_kwargs(cls, kwargs) -> Tuple[dict, dict, list]:
-        keyval_args = {}
-        bool_args = []
+    def append(self, **kwargs) -> CompSelf:
+        self._convert_class(kwargs)
+        return super().append(**kwargs)
 
-        for key, val in kwargs.items():
+    def _get_attributes(self) -> str:  # noqa: C901
+        bool_args = []
+        keyval_args = []
+
+        for key, val in self.props.items():
             if isinstance(val, str) and '"' in val and "'" in val:
                 raise ValueError("Both single and double quotes in attribute value")
             if keyword.iskeyword(no_underscore := key[:-1]):
                 key = no_underscore
             if isinstance(val, (list, tuple)):
-                val = " ".join(str(e) for e in val)
+                val = " ".join(str(i) for i in val)
+
+            html_key = escape(key.replace("_", "-"))
 
             if isinstance(val, bool):
-                if val:
-                    bool_args.append(key)
-                else:
-                    # must not include in the output
+                # by HTML standard, False values must not be included in attributes
+                if not val:
                     continue
+                bool_args.append(html_key)
             else:
-                keyval_args[key] = val
+                html_val = escape(val)
+                if '"' in html_val:
+                    html_attr = f"{html_key}='{html_val}'"
+                else:
+                    html_attr = f'{html_key}="{html_val}"'
+                keyval_args.append(html_attr)
 
-        return keyval_args, bool_args
+        bool_prefix = " " if bool_args else ""
+        bool_arguments = " ".join(bool_args)
 
-    def append(self, **kwargs) -> CompSelf:
-        self._convert_class(kwargs)
-        return super().append(**kwargs)
+        keyval_prefix = " " if keyval_args else ""
+        keyval_arguments = " ".join(keyval_args)
 
-    def _get_attributes(self) -> str:
-        keyval_args, bool_args = self._convert_kwargs(self.props)
-        conv = lambda s: escape(str(s).replace("_", "-"))
-        bool_args = " ".join(conv(a) for a in bool_args)
-        bool_args = " " + bool_args if bool_args else ""
-        kv_args = []
-        for k, v in keyval_args.items():
-            if isinstance(v, (list, tuple)):
-                v = " ".join(conv(i) for i in v)
-            html_key = conv(k)
-            html_val = escape(v)
-            if '"' in html_val:
-                html_attr = f"{html_key}='{html_val}'"
-            else:
-                html_attr = f'{html_key}="{html_val}"'
-            kv_args.append(html_attr)
-        kv_args = " ".join(kv_args)
-        kv_args = " " + kv_args if kv_args else ""
-        return bool_args + kv_args
+        return bool_prefix + bool_arguments + keyval_prefix + keyval_arguments
 
 
 class _HTMLComponent(_HTMLComponentBase, _ChildrenBase):
