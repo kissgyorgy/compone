@@ -1,25 +1,23 @@
 [tool.poetry]
-name = "compone"
+name = "compone-development"
 version = "0.1.0"
-description = "Component framework for Python"
+description = "Monoproject for development of all compone projects"
 authors = ["György Kiss <gyorgy@duck.com>"]
 license = "MIT"
-readme = "README.md"
-package-mode = true
-packages = [{ include = "compone", from = "core" }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-markupsafe = "^2.1.5"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
-ruff = "^0.1"
-pytest-sugar = "*"
-pytest-icdiff = "*"
+compone = { path = "./core", develop = true }
 compone-stories = { path = "./stories", develop = true }
 compone-cli = { path = "./cli", develop = true }
 compone-ssg = { path = "./ssg", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+pytest-sugar = "*"
+pytest-icdiff = "*"
+ruff = "^0.1"
 tox = "^4.14.2"
 
 [tool.ruff]
@@ -36,7 +34,3 @@ ignore = [
 
 [tool.ruff.mccabe]
 max-complexity = 5
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
