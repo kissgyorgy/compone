@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Callable, Iterable, List, Optional, Protocol, Type, TypeVar, Union
 
 from .escape import escape, safe
-from .utils import _is_iterable
+from .utils import is_iterable
 
 # previous frame id (frame.f_back), parent object
 last_parent = ContextVar("last_parent", default=(None, None))
@@ -153,12 +153,8 @@ class _ChildrenBase(_ComponentBase):
                 "use the += operator if you want to add more."
             )
 
-        if _is_iterable(children):
-            # str is a special case, because it's an iterator too.
-            # _ChildrenBase are also iterators because of this very method
-            if isinstance(children, (str, safe, _ChildrenBase)):
-                children = (children,)
-        else:
+        # _ChildrenBase are also iterators because of this very method
+        if not is_iterable(children) or isinstance(children, _ChildrenBase):
             children = (children,)
 
         new = self.__class__(*self._bound_args.args, **self._bound_args.kwargs)
@@ -189,9 +185,9 @@ class _ChildrenBase(_ComponentBase):
 
     @classmethod
     def _escape(cls, item) -> safe:
-        if isinstance(item, (str, _ComponentBase)):
+        if isinstance(item, _ComponentBase):
             return escape(item)
-        elif _is_iterable(item):
+        elif is_iterable(item):
             return safe("".join(cls._escape(e) for e in item))
         else:
             return escape(item)
