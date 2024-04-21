@@ -263,36 +263,6 @@ def test_replace_raise_TypeError_for_non_existing_prop():
         CompWithArgs(1, 2).replace(c=3, d=4)
 
 
-def test_class_list():
-    div1 = html.Div(class_=["alma", "korte"])
-    div2 = div1.append(class_=["barack"])
-    assert str(div2) == """<div class="alma korte barack"></div>"""
-
-
-def test_multiple_spaces_are_removed():
-    div1 = html.Div(class_="alma    korte  barack\nrepa")
-    assert str(div1) == """<div class="alma korte barack repa"></div>"""
-
-    div2 = html.Div(class_=["  alma  ", "  korte  "])
-    assert str(div2) == """<div class="alma korte"></div>"""
-
-    div3 = div2.append(class_=["  barack  "])
-    assert str(div3) == """<div class="alma korte barack"></div>"""
-
-
-def test_class_str_and_list_can_be_mixed():
-    div1 = html.Div(class_="alma")
-    div2 = div1.append(class_=["korte", "barack"])
-    assert str(div2) == """<div class="alma korte barack"></div>"""
-
-    div3 = div2.append(class_="repa")
-    assert str(div3) == """<div class="alma korte barack repa"></div>"""
-
-    div4 = html.Div(class_=["alma", "korte"])
-    div5 = div4.append(class_="barack")
-    assert str(div5) == """<div class="alma korte barack"></div>"""
-
-
 def test_passing_same_argument_multiple_time_raises_TypeError():
     with pytest.raises(TypeError, match="multiple values for argument 'a'"):
         CompWithArgs(3, a=4, b=4)

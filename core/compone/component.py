@@ -238,13 +238,19 @@ class _HTMLComponentBase(_ComponentBase):
         self._convert_class(kwargs)
         super().__init__(**kwargs)
 
-    @staticmethod
-    def _convert_class(kwargs) -> list:
+    @classmethod
+    def _convert_class(cls, kwargs) -> list:
         class_ = kwargs.get("class_", None)
-        if isinstance(class_, str):
-            kwargs["class_"] = class_.split()
-        elif isinstance(class_, (list, tuple)):
-            kwargs["class_"] = [c.strip() for c in class_]
+        if not class_:
+            return
+        elif isinstance(class_, str):
+            if not class_.strip():
+                return
+            classes = class_.split()
+        elif is_iterable(class_):
+            classes = [spc for cls in class_ if cls for spc in cls.split() if spc]
+
+        kwargs["class_"] = [stripped for c in classes if c and (stripped := c.strip())]
 
     def append(self, **kwargs) -> CompSelf:
         self._convert_class(kwargs)

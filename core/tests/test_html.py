@@ -59,3 +59,62 @@ def test_self_closing_html_components_are_comparable():
 
     assert img1 is not img2
     assert img2 is not img3
+
+
+def test_class_list():
+    div1 = html.Div(class_=["alma", "korte"])
+    div2 = div1.append(class_=["barack"])
+    assert str(div2) == """<div class="alma korte barack"></div>"""
+
+
+def test_multiple_spaces_are_removed():
+    div1 = html.Div(class_="alma    korte  barack\nrepa")
+    assert str(div1) == """<div class="alma korte barack repa"></div>"""
+
+    div2 = html.Div(class_=["  alma  ", "  korte  "])
+    assert str(div2) == """<div class="alma korte"></div>"""
+
+    div3 = div2.append(class_=["  barack  "])
+    assert str(div3) == """<div class="alma korte barack"></div>"""
+
+
+def test_class_str_and_list_can_be_mixed():
+    div1 = html.Div(class_="alma")
+    div2 = div1.append(class_=["korte", "barack"])
+    assert str(div2) == """<div class="alma korte barack"></div>"""
+
+    div3 = div2.append(class_="repa")
+    assert str(div3) == """<div class="alma korte barack repa"></div>"""
+
+    div4 = html.Div(class_=["alma", "korte"])
+    div5 = div4.append(class_="barack")
+    assert str(div5) == """<div class="alma korte barack"></div>"""
+
+
+def test_class_accept_None():
+    div1 = html.Div(class_=None)
+    assert str(div1) == """<div></div>"""
+
+    div2 = html.Div(class_=["alma", None, "korte"])
+    assert str(div2) == """<div class="alma korte"></div>"""
+
+
+def test_classes_are_stripped():
+    div1 = html.Div(class_="  alma  ")
+    assert str(div1) == """<div class="alma"></div>"""
+
+    div2 = html.Div(class_=["  alma  ", "  korte  "])
+    assert str(div2) == """<div class="alma korte"></div>"""
+
+    div3 = div2.append(class_=["  barack  "])
+    assert str(div3) == """<div class="alma korte barack"></div>"""
+
+
+def test_class_elems_can_have_multiple():
+    div1 = html.Div(class_=["alma", "  korte  barack repa"])
+    assert str(div1) == """<div class="alma korte barack repa"></div>"""
+
+    div3 = div1.append(class_=["szilva    cseresznye"])
+    assert (
+        str(div3) == """<div class="alma korte barack repa szilva cseresznye"></div>"""
+    )
