@@ -4,7 +4,7 @@ from compone import Component, html
 @Component
 def Page(*, css_url, children):
     with html.Html(class_="m-4") as page:
-        with html.Meta() as meta:
+        with html.Head() as meta:
             meta += html.Link(rel="stylesheet", href=css_url)
         page += html.H1(class_="text-center mx-auto pb-4 border-b")["Compone Stories"]
         page += children

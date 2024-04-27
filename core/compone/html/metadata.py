@@ -13,12 +13,14 @@ Title = _Elem("title")
 @Component
 def Meta(
     *,
-    name: str,
+    name: Optional[str] = None,
     http_equiv: Optional[str] = None,
     itemprop: Optional[str] = None,
     content: Optional[str] = None,
 ):
-    kwargs = {"name": name}
+    kwargs = {}
+    if name:
+        kwargs["name"] = name
     if http_equiv:
         kwargs["http-equiv"] = http_equiv
     if content:

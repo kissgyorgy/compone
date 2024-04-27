@@ -27,7 +27,6 @@ class Story:
 
     @classmethod
     def render(cls) -> safe | _ComponentBase:
-        # FIXME?: if every component would be lazy by default, we might not need this
         if inspect.isclass(cls.component) and issubclass(cls.component, _ComponentBase):
             content = cls.component()
         else:

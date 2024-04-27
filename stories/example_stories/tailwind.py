@@ -5,7 +5,7 @@ from compone_stories import Story
 @Component
 def TailwindPage(*, children):
     return html.Html[
-        html.Meta[html.Script(src="https://cdn.tailwindcss.com"),],
+        html.Head[html.Script(src="https://cdn.tailwindcss.com"),],
         html.Body[children],
     ]
 
