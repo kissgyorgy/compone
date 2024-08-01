@@ -41,7 +41,8 @@ class Event:
     """triggered before the request, allows you to customize parameters, headers"""
 
     CONFIRM = "htmx:confirm"
-    """triggered after a trigger occurs on an element, allows you to cancel (or delay) issuing the AJAX request"""
+    """triggered after a trigger occurs on an element,
+    allows you to cancel (or delay) issuing the AJAX request"""
 
     HISTORY_CACHE_ERROR = "htmx:history-cache-error"
     """triggered on an error during cache writing"""
@@ -65,7 +66,9 @@ class Event:
     """triggered when new content is added to the DOM"""
 
     NO_SSE_SOURCE_ERROR = "htmx:no-sse-source-error"
-    """triggered when an element refers to a SSE event in its trigger, but no parent SSE source has been defined"""
+    """triggered when an element refers to a SSE event in its trigger,
+       but no parent SSE source has been defined
+    """
 
     ON_LOAD_ERROR = "htmx:on-load-error"
     """triggered when an exception occurs during the onLoad handling in htmx"""
@@ -74,10 +77,14 @@ class Event:
     """triggered after an out of band element as been swapped in"""
 
     OOB_BEFORE_SWAP = "htmx:oob-before-swap"
-    """triggered before an out of band element swap is done, allows you to configure the swap"""
+    """triggered before an out of band element swap is done,
+       allows you to configure the swap
+    """
 
     OOB_ERROR_NO_TARGET = "htmx:oob-error-no-target"
-    """triggered when an out of band element does not have a matching ID in the current DOM"""
+    """triggered when an out of band element does not have a matching ID
+       in the current DOM
+    """
 
     PROMPT = "htmx:prompt"
     """triggered after a prompt is shown"""

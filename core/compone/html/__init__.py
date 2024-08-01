@@ -1,4 +1,3 @@
-# ruff: noqa: F401
 from ..component import _Elem
 from .content_sectioning import (
     H1,

@@ -33,3 +33,4 @@ ignore = [
     "E731", # Do not assign a lambda expression, use a def
 ]
 mccabe = { max-complexity = 5 }
+per-file-ignores = { "__init__.py" = ["F401"] }

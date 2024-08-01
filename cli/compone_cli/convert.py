@@ -34,7 +34,16 @@ def convert_html(file, component_name: str):
     print(textwrap.indent(make_source(res), "    "))
 
 
-def parse_element_tree(element, parent):
+def _make_attribs(attribs: dict[str, str]):
+    attribs = {}
+    for k, v in attribs.items():
+        if k in {"class", "for", "is", "async"}:
+            k = f"{k}_"
+        k = k.replace("-", "_")
+        attribs[k] = v
+
+
+def parse_element_tree(element, parent):  # noqa: C901
     if not element.nsmap:
         tagname = element.tag
     else:
@@ -45,12 +54,7 @@ def parse_element_tree(element, parent):
         return obj
 
     cls_name = tagname.capitalize()
-    attribs = {}
-    for k, v in element.attrib.items():
-        if k in {"class", "for", "is", "async"}:
-            k = f"{k}_"
-        k = k.replace("-", "_")
-        attribs[k] = v
+    attribs = _make_attribs(element.attrib)
 
     obj = getattr(html, cls_name)(**attribs)
 
@@ -67,10 +71,10 @@ def parse_element_tree(element, parent):
     return obj
 
 
-def make_source(obj, root=True):
+def make_source(obj, root=True) -> str:  # noqa: C901
     pieces = []
     if isinstance(obj, safe):
-        return '"""' + str(obj) + '"""' + ",\n"
+        return '"""' + str(obj) + '""",\n'
     elif isinstance(obj, str):
         return repr(obj) + ",\n"
 
@@ -81,7 +85,9 @@ def make_source(obj, root=True):
         pieces.append("[")
         for child in obj._children:
             pieces.append(make_source(child, root=False))
-    pieces.append("]")
+        pieces.append("]")
+
     if not root:
         pieces.append(",\n")
+
     return "".join(pieces)
