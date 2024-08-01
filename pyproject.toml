@@ -15,11 +15,11 @@ compone-ssg = { path = "./ssg", develop = true }
 compone-preline = { path = "./frameworks/preline-ui", develop = true }
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
+pytest = "^8.0"
 pytest-sugar = "*"
 pytest-icdiff = "*"
-ruff = "^0.1"
-tox = "^4.14.2"
+ruff = "*"
+tox = "^4"
 
 [tool.ruff.lint]
 select = [

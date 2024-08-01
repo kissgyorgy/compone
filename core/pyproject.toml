@@ -10,7 +10,7 @@ packages = [{ include = "compone" }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-markupsafe = "^2.1.5"
+markupsafe = "*"
 
 
 [build-system]
