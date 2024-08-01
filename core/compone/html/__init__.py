@@ -1,5 +1,5 @@
-from ..component import _Elem
-from .content_sectioning import (
+from .attributes import classes
+from .elements.content_sectioning import (
     H1,
     H2,
     H3,
@@ -15,8 +15,8 @@ from .content_sectioning import (
     Nav,
     Section,
 )
-from .embedded import Embed, Iframe, Object, Picture, Portal, Source
-from .forms import (
+from .elements.embedded import Embed, Iframe, Object, Picture, Portal, Source
+from .elements.forms import (
     Button,
     ButtonButton,
     Datalist,
@@ -35,7 +35,7 @@ from .forms import (
     SubmitButton,
     Textarea,
 )
-from .inline_text import (
+from .elements.inline_text import (
     A,
     Abbr,
     B,
@@ -68,14 +68,25 @@ from .inline_text import (
     Var,
     Wbr,
 )
-from .interactive import Details, Dialog, Summary
-from .main import Body, Html
-from .metadata import Base, Head, Link, Meta, Style, Title
-from .multimedia import Area, Audio, Img, Map, Track, Video
-from .other import Math, Svg
-from .scripting import Canvas, Noscript, Script
-from .table import Caption, Col, Colgroup, Table, Tbody, Td, Tfoot, Th, Thead, Tr
-from .text_content import (
+from .elements.interactive import Details, Dialog, Summary
+from .elements.main import Body, Html
+from .elements.metadata import Base, Head, Link, Meta, Style, Title
+from .elements.multimedia import Area, Audio, Img, Map, Track, Video
+from .elements.other import Math, Svg
+from .elements.scripting import Canvas, Noscript, Script
+from .elements.table import (
+    Caption,
+    Col,
+    Colgroup,
+    Table,
+    Tbody,
+    Td,
+    Tfoot,
+    Th,
+    Thead,
+    Tr,
+)
+from .elements.text_content import (
     Blockquote,
     Dd,
     Div,
@@ -91,4 +102,4 @@ from .text_content import (
     Pre,
     Ul,
 )
-from .web_components import Slot, Template
+from .elements.web_components import Slot, Template

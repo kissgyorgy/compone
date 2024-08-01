@@ -1,5 +1,5 @@
+from ...escape import safe
 from ..component import _Elem
-from ..escape import safe
 
 A = _Elem("a")
 Abbr = _Elem("abbr")

@@ -1,4 +1,4 @@
-from .component import _ChildrenBase, _HTMLComponentBase, safe
+from .html.component import _ChildrenBase, _HTMLComponentBase, safe
 
 Xml10 = safe('<?xml version="1.0" encoding="UTF-8"?>')
 Xml11 = safe('<?xml version="1.1" encoding="UTF-8"?>')

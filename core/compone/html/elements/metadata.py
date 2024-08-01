@@ -1,7 +1,8 @@
 from typing import Optional
 
-from ..component import Component, _Elem, _SelfElem
-from ..escape import safe
+from ...component import Component
+from ...escape import safe
+from ..component import _Elem, _SelfElem
 
 Base = _Elem("base")
 Head = _Elem("head")
