@@ -5,6 +5,7 @@ from typing import TypeVar
 from ..component import CompSelf, _ChildrenBase, _ComponentBase
 from ..escape import escape, safe
 from ..utils import is_iterable
+from .helpers import classes
 
 T = TypeVar("T")
 
@@ -20,26 +21,22 @@ class _HTMLComponentBase(_ComponentBase):
         if self._attributes is not None:
             kwargs.update(self._attributes)
         self._original_kwargs = kwargs
-        self._convert_class(kwargs)
+        self._parse_class(kwargs)
         super().__init__(**kwargs)
 
-    @classmethod
-    def _convert_class(cls, kwargs) -> list:
-        class_ = kwargs.get("class_", None)
-        if not class_:
-            return
-        elif isinstance(class_, str):
-            if not class_.strip():
-                return
-            classes = class_.split()
-        elif is_iterable(class_):
-            classes = [spc for cls in class_ if cls for spc in cls.split() if spc]
-
-        kwargs["class_"] = [stripped for c in classes if c and (stripped := c.strip())]
-
     def append(self, **kwargs) -> CompSelf:
-        self._convert_class(kwargs)
+        self._parse_class(kwargs)
         return super().append(**kwargs)
+
+    @staticmethod
+    def _parse_class(kwargs):
+        for class_kw in ("class_", "class"):
+            if class_ := kwargs.get(class_kw, None):
+                break
+        else:
+            return
+        if parsed := classes(class_):
+            kwargs[class_kw] = parsed
 
     def _get_attributes(self) -> str:  # noqa: C901
         bool_args = []
@@ -50,7 +47,7 @@ class _HTMLComponentBase(_ComponentBase):
                 raise ValueError("Both single and double quotes in attribute value")
             if keyword.iskeyword(no_underscore := key[:-1]):
                 key = no_underscore
-            if isinstance(val, (list, tuple)):
+            if is_iterable(val):
                 val = " ".join(str(i) for i in val)
 
             html_key = escape(key.replace("_", "-"))

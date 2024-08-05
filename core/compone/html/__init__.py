@@ -1,4 +1,3 @@
-from .attributes import classes
 from .elements.content_sectioning import (
     H1,
     H2,
@@ -103,3 +102,4 @@ from .elements.text_content import (
     Ul,
 )
 from .elements.web_components import Slot, Template
+from .helpers import classes
