@@ -17,3 +17,13 @@ test *pytest-params:
 # Run tests continuously and re-run them with watchexec if files changed
 watchtests *pytest-params:
     watchexec --restart --exts py --stop-timeout 0 -- {{ pytest }} {{ pytest-params }}
+
+test-release:
+    #!/usr/bin/env bash
+    export POETRY_PYPI_TOKEN_TESTPYPI=$(op.exe read op://Secrets/test-pypi-token/credential)
+    poetry publish -r testpypi
+
+release:
+    #!/usr/bin/env bash
+    export POETRY_PYPI_TOKEN_PYPI=$(op.exe read op://Secrets/pypi-token/credential)
+    poetry publish
