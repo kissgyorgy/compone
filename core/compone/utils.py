@@ -1,4 +1,7 @@
-def is_iterable(value):
+from typing import Any
+
+
+def is_iterable(value: Any) -> bool:
     if isinstance(value, str):
         return False
     try:
