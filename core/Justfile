@@ -21,9 +21,10 @@ watchtests *pytest-params:
 testpypi-release: test
     #!/usr/bin/env bash
     export POETRY_PYPI_TOKEN_TESTPYPI=$(op.exe read op://Secrets/test-pypi-token/credential)
-    poetry publish -r testpypi
+    export POETRY_REPOSITORIES_TESTPYPI_URL=https://test.pypi.org/legacy/
+    poetry publish --build --repository testpypi
 
 release: test
     #!/usr/bin/env bash
     export POETRY_PYPI_TOKEN_PYPI=$(op.exe read op://Secrets/pypi-token/credential)
-    poetry publish
+    poetry publish --build
