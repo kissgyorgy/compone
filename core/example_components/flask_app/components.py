@@ -9,14 +9,14 @@ count = 0
 def Header():
     return html.Div[
         html.Center["Welcome to my page",],
-        html.Hr,
+        html.Hr(),
     ]
 
 
 @Component
 def Footer():
     return html.Div[
-        html.Hr,
+        html.Hr(),
         html.Center["Created by Walkman"],
     ]
 

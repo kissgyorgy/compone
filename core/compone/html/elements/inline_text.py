@@ -1,12 +1,11 @@
-from ...escape import safe
-from ..component import _Elem
+from ..component import _Elem, _SelfElem
 
 A = _Elem("a")
 Abbr = _Elem("abbr")
 B = _Elem("b")
 Bdi = _Elem("bdi")
 Bdo = _Elem("bdo")
-Br = safe("<br>")
+Br = _SelfElem("<br>")
 Cite = _Elem("cite")
 Code = _Elem("code")
 Data = _Elem("data")
@@ -31,4 +30,4 @@ Sup = _Elem("sup")
 Time = _Elem("time")
 U = _Elem("u")
 Var = _Elem("var")
-Wbr = safe("<wbr />")
+Wbr = _SelfElem("<wbr />")

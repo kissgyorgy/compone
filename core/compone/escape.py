@@ -1,3 +1,4 @@
+import inspect
 from typing import Any
 
 from markupsafe import Markup
@@ -19,6 +20,8 @@ def escape(s: Any) -> safe:
         return s
     elif s is None:
         return safe()
+    elif inspect.isclass(s):
+        raise ValueError("Cannot escape classes. Instantiate the class first!")
     # We use the __str__ method instead of __html__
     elif hasattr(s, "__str__"):
         s = s.__str__()

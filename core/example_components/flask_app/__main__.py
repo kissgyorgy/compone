@@ -20,7 +20,7 @@ def page(title):
     return Page(title, now)[
         html.Div[
             html.H2[title],
-            "Here is a cat:" + html.Br,
+            "Here is a cat:" + html.Br(),
             html.Img(src="https://cataas.com/cat", width=400),
         ],
         Counter,

@@ -1,4 +1,5 @@
-from compone import escape, safe
+import pytest
+from compone import escape, html, safe
 
 
 def test_object_with_str():
@@ -50,3 +51,17 @@ def test_escape_None():
     assert escape(None) == safe("")
     assert escape(None) == ""
     assert str(escape(None)) == ""
+
+
+def test_escape_class_raises_error():
+    class SomeObject:
+        pass
+
+    with pytest.raises(ValueError):
+        escape(SomeObject)
+
+    with pytest.raises(ValueError):
+        escape(html.Br)
+
+    with pytest.raises(ValueError):
+        escape(html.Hr)

@@ -4,7 +4,6 @@ from typing import TypeVar
 
 from ..component import CompSelf, _ChildrenBase, _ComponentBase
 from ..escape import escape, safe
-from ..utils import is_iterable
 from .helpers import classes
 
 T = TypeVar("T")

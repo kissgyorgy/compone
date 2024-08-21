@@ -26,7 +26,7 @@ def main():
             html.Li["first elem"],
             html.Li["second elem"],
         ],
-        html.Hr,
+        html.Hr(),
         UnordList(names),
         html.Div[
             html.H1[title],
@@ -37,7 +37,7 @@ def main():
             html.P["paragraph"],
             # these two are the same
             "<br>",
-            html.Br,
+            html.Br(),
         ],
         html.Div[
             html.P["first paragraph"],
