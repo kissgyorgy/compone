@@ -6,10 +6,19 @@ from markupsafe import escape as markupsafe_escape
 
 __all__ = ["escape", "safe"]
 
-# Alias, because this is more generic than HTML and make sure
-# that the API is future proof in case we change implementation
-safe = Markup
-"""Exclude a string from autoescaping using Markupsafe."""
+
+# This is more generic than HTML. Make sure that the API is future proof
+# in case we change implementation
+class safe(Markup):
+    """Exclude a string from autoescaping using Markupsafe."""
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({str.__repr__(self)})"
+
+    def __html__(self) -> str:
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '__html__'"
+        )
 
 
 def escape(s: Any) -> safe:
@@ -25,5 +34,7 @@ def escape(s: Any) -> safe:
     # We use the __str__ method instead of __html__
     elif hasattr(s, "__str__"):
         s = s.__str__()
+        if isinstance(s, safe):
+            return s
 
-    return markupsafe_escape(s)
+    return safe(markupsafe_escape(s))
