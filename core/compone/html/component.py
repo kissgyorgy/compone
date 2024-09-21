@@ -29,13 +29,9 @@ class _HTMLComponentBase(_ComponentBase):
 
     @staticmethod
     def _parse_class(kwargs):
-        for class_kw in ("class_", "class"):
-            if class_ := kwargs.get(class_kw, None):
-                break
-        else:
-            return
+        class_ = kwargs.get("class_", None)
         if parsed := classes(class_):
-            kwargs[class_kw] = parsed
+            kwargs["class_"] = parsed
 
     def _get_attributes(self) -> str:  # noqa: C901
         bool_args = []
