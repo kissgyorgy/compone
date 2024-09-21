@@ -58,11 +58,6 @@ class _ComponentBase:
             kwargs_list = ", ".join(repr(k) for k in kwargs.keys())
             raise TypeError(f"{self!r} has no existing props for {kwargs_list}")
 
-    def __call__(self, *args, **kwargs) -> CompSelf:
-        # Replaces existing props, set new ones
-        args_only = {name: newval for name, newval in zip(self._positional_args, args)}
-        return self._make_new({**args_only, **kwargs})
-
     def _make_new(self, new_arguments) -> CompSelf:
         arguments_copy = {
             k: copy.copy(v) for k, v in self._bound_args.arguments.items()
@@ -159,11 +154,6 @@ class _ChildrenBase(_ComponentBase):
     @property
     def children(self):
         return tuple(self._children)
-
-    def __call__(self, *args, **kwargs) -> CompSelf:
-        if self._children:
-            raise ValueError("Component already has children, cannot replace them.")
-        return super().__call__(*args, **kwargs)
 
     def __eq__(self, other):
         if not isinstance(other, _ChildrenBase):

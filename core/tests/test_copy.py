@@ -14,12 +14,16 @@ def test_old_instance_not_affected_on_append():
     assert str(comp1) == "Some component 1, 2, 3"
     assert str(comp2) == "Some component 1, 2, 3, 4"
 
+    comp3 = comp2.append(a=[6])
+    assert str(comp2) == "Some component 1, 2, 3, 4"
+    assert str(comp3) == "Some component 1, 2, 3, 4, 6"
 
-def test_old_instance_not_affected_on_copy():
+
+def test_old_instance_not_affected_on_replace():
     arg1 = [1, 2, 3]
     comp1 = MyComp(a=arg1)
-    comp2 = comp1()
-
+    comp2 = comp1.replace(a=[4])
     arg1.append(4)
+
     assert str(comp1) == "Some component 1, 2, 3, 4"
-    assert str(comp2) == "Some component 1, 2, 3"
+    assert str(comp2) == "Some component 4"
