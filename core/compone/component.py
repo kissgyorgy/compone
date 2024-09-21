@@ -106,6 +106,9 @@ class _ComponentBase:
         Multiple.__doc__ = "Multiple: " + (self.__doc__ or "")
         return Multiple()
 
+    def __iter__(self) -> ChildSelf:
+        raise TypeError(f"{self.__class__.__name__} object is not iterable")
+
 
 class _ChildrenBase(_ComponentBase):
     def __init__(self, *args, **kwargs):
@@ -143,8 +146,7 @@ class _ChildrenBase(_ComponentBase):
                 "use the += operator if you want to add more."
             )
 
-        # _ChildrenBase are also iterators because of this very method
-        if not is_iterable(children) or isinstance(children, _ChildrenBase):
+        if not is_iterable(children):
             children = (children,)
 
         new = self.__class__(*self._bound_args.args, **self._bound_args.kwargs)
@@ -170,8 +172,6 @@ class _ChildrenBase(_ComponentBase):
 
     @classmethod
     def _escape(cls, item) -> safe:
-        if isinstance(item, _ComponentBase):
-            return escape(item)
         elif is_iterable(item):
             return safe("".join(cls._escape(e) for e in item))
         else:
