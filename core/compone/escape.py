@@ -4,6 +4,8 @@ from typing import Any
 from markupsafe import Markup
 from markupsafe import escape as markupsafe_escape
 
+from .utils import is_iterable
+
 __all__ = ["escape", "safe"]
 
 
@@ -21,7 +23,7 @@ class safe(Markup):
         )
 
 
-def escape(s: Any) -> safe:
+def escape(s: Any) -> safe:  #  noqa: C901
     """Replace special characters to HTML/XML-safe sequences.
     Marks the resulting string as safe with Markupsafe.
     """
@@ -31,6 +33,8 @@ def escape(s: Any) -> safe:
         return safe()
     elif inspect.isclass(s):
         raise ValueError("Cannot escape classes. Instantiate the class first!")
+    elif is_iterable(s):
+        return safe("".join(escape(e) for e in s))
     # We use the __str__ method instead of __html__
     elif hasattr(s, "__str__"):
         s = s.__str__()

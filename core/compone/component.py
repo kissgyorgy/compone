@@ -166,16 +166,9 @@ class _ChildrenBase(_ComponentBase):
         return str(self) == str(other)
 
     def __str__(self) -> safe:
-        safe_children = self._escape(self._children) if self._children else safe()
+        safe_children = escape(self._children) if self._children else safe()
         content = self._render(safe_children)
-        return self._escape(content)
-
-    @classmethod
-    def _escape(cls, item) -> safe:
-        elif is_iterable(item):
-            return safe("".join(cls._escape(e) for e in item))
-        else:
-            return escape(item)
+        return escape(content)
 
 
 class _FuncComponent(_ChildrenBase):
