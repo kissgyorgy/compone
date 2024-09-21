@@ -3,7 +3,7 @@ from typing import Iterable
 from ..utils import is_iterable
 
 
-def _parse_class_arg(
+def _make_class_list(
     arg: str | Iterable[str | None] | dict[str, bool],
 ) -> Iterable[str]:
     if not arg:
@@ -24,17 +24,10 @@ def classes(*args: str | Iterable[str] | dict[str, bool]) -> list[str]:
     list of str --> list of classes
     dict[str, bool] --> list of enabled classes
     """
-
-    if not args:
-        return
-
-    pieces = dict()
-    for arg in args:
-        class_str_list = _parse_class_arg(arg)
-        stripped_classes = (
-            stripped for class_ in class_str_list if (stripped := class_.strip())
-        )
-        for class_ in stripped_classes:
-            pieces[class_] = True
-
-    return list(pieces.keys())
+    pieces = [
+        stripped
+        for arg in args
+        for class_ in _make_class_list(arg)
+        if (stripped := class_.strip())
+    ]
+    return list(dict.fromkeys(pieces))
