@@ -1,9 +1,20 @@
 import copy
 import inspect
+import keyword
 from contextvars import ContextVar
 from functools import cached_property
 from types import MappingProxyType
-from typing import Callable, Iterable, List, Optional, Protocol, Type, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from .escape import escape, safe
 from .utils import is_iterable
@@ -22,10 +33,33 @@ class ComponentClass(Protocol):
 class _ComponentBase:
     _sig: inspect.Signature
     _positional_args: List[str]
+    # A dict of keyword arguments that aren’t bound to any other parameter.
+    # This corresponds to a **kwargs parameter in a Python function definition.
     _var_keyword: Optional[str]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, func: Callable, *args, **kwargs):
+        self._check_duplicate_kwargs(func, kwargs)
         self._bound_args = self._bind_args(*args, **kwargs)
+
+    @staticmethod
+    def _check_duplicate_kwargs(func: Callable, kwargs: dict[str, Any]):
+        seen_keywords = set()
+        for name in kwargs.keys():
+            # any other argument will be handled by self._sig.bind()
+            if name.endswith("_"):
+                no_underscore = name[:-1]
+            else:
+                no_underscore = name
+            if not keyword.iskeyword(no_underscore):
+                continue
+            if no_underscore in seen_keywords:
+                qualname = getattr(func, "__qualname__", None)
+                name = qualname or func.__name__
+                raise TypeError(
+                    f"'{func.__module__}.{func.__qualname__}' got multiple values for "
+                    f"keyword argument '{no_underscore}'"
+                )
+            seen_keywords.add(no_underscore)
 
     def _bind_args(self, *args, **kwargs):
         bound = self._sig.bind(*args, **kwargs)
@@ -175,6 +209,9 @@ class _FuncComponent(_ChildrenBase):
     _func: Callable
     _pass_children: bool
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(self._func, *args, **kwargs)
+
     def _render(self, children: safe) -> Union[CompSelf, Iterable[CompSelf]]:
         # BoundArguments.kwargs is a property, this makes a copy
         kwargs = self._bound_args.kwargs
@@ -190,6 +227,9 @@ class _FuncComponent(_ChildrenBase):
 class _ClassComponent(_ChildrenBase):
     _pass_children: bool
     _user_class: ComponentClass
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self._user_class.render, *args, **kwargs)
 
     @cached_property
     def _user_instance(self) -> ComponentClass:

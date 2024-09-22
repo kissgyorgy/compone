@@ -15,10 +15,3 @@ def test_html_class_append_different_name():
 
     with pytest.raises(TypeError):
         html.P(class_="green").replace(**original)
-
-
-def test_class_no_underscore_will_not_be_handled_as_class_underscore():
-    class_ = {"class": "red     blue"}
-    p = html.P(class_="green", **class_)
-    # FIXME: #14
-    assert str(p) == '<p class="green" class="red     blue"></p>'

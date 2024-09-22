@@ -21,7 +21,7 @@ class _HTMLComponentBase(_ComponentBase):
             kwargs.update(self._attributes)
         self._original_kwargs = kwargs
         self._parse_class(kwargs)
-        super().__init__(**kwargs)
+        super().__init__(self.__class__, **kwargs)
 
     def append(self, **kwargs) -> CompSelf:
         self._parse_class(kwargs)

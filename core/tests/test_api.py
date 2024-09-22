@@ -1,3 +1,4 @@
+import keyword
 import re
 
 import pytest
@@ -271,3 +272,16 @@ def test_passing_same_argument_multiple_time_raises_TypeError():
 def test_replace_must_have_existing_props():
     with pytest.raises(TypeError, match="has no existing props for 'c'"):
         CompWithKwargs(1, 2).replace(c=3)
+
+
+@pytest.mark.parametrize("keyword", keyword.kwlist)
+def test_duplicate_keyword_arguments(keyword: str):
+    underscored = keyword + "_"
+
+    with pytest.raises(TypeError):
+        html.P(**{keyword: 1, underscored: 2})
+    with pytest.raises(TypeError):
+        html.P(**{underscored: 2, keyword: 1})
+
+    with pytest.raises(TypeError):
+        html.Br().append(**{keyword: 1, underscored: 2})
