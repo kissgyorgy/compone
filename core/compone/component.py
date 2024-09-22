@@ -38,28 +38,19 @@ class _ComponentBase:
     _var_keyword: Optional[str]
 
     def __init__(self, func: Callable, *args, **kwargs):
-        self._check_duplicate_kwargs(func, kwargs)
+        self._check_keywords(func, kwargs)
         self._bound_args = self._bind_args(*args, **kwargs)
 
     @staticmethod
-    def _check_duplicate_kwargs(func: Callable, kwargs: dict[str, Any]):
-        seen_keywords = set()
+    def _check_keywords(func: Callable, kwargs: dict[str, Any]):
         for name in kwargs.keys():
-            # any other argument will be handled by self._sig.bind()
-            if name.endswith("_"):
-                no_underscore = name[:-1]
-            else:
-                no_underscore = name
-            if not keyword.iskeyword(no_underscore):
-                continue
-            if no_underscore in seen_keywords:
-                qualname = getattr(func, "__qualname__", None)
-                name = qualname or func.__name__
-                raise TypeError(
-                    f"'{func.__module__}.{func.__qualname__}' got multiple values for "
-                    f"keyword argument '{no_underscore}'"
+            if keyword.iskeyword(name):
+                func_name = getattr(func, "__qualname__", func.__name__)
+                func_full_name = f"{func.__module__}.{func_name}"
+                raise SyntaxError(
+                    f"keyword: {name!r} cannot be used as argument name "
+                    f"in {func_full_name!r}, use an underscore at the end instead"
                 )
-            seen_keywords.add(no_underscore)
 
     def _bind_args(self, *args, **kwargs):
         bound = self._sig.bind(*args, **kwargs)
@@ -79,10 +70,12 @@ class _ComponentBase:
         return MappingProxyType({**args, **kwargs})
 
     def replace(self, **kwargs) -> CompSelf:
+        self._check_keywords(self.replace, kwargs)
         self._check_common_props(kwargs)
         return self._make_new(kwargs)
 
     def append(self, **kwargs) -> CompSelf:
+        self._check_keywords(self.append, kwargs)
         self._check_common_props(kwargs)
         appended = {key: (self.props[key] + val) for key, val in kwargs.items()}
         return self._make_new(appended)

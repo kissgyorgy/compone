@@ -275,13 +275,11 @@ def test_replace_must_have_existing_props():
 
 
 @pytest.mark.parametrize("keyword", keyword.kwlist)
-def test_duplicate_keyword_arguments(keyword: str):
-    underscored = keyword + "_"
+def test_keyword_argument(keyword: str):
+    with pytest.raises(SyntaxError):
+        html.P(**{keyword: 1})
+    with pytest.raises(SyntaxError):
+        html.Br(**{keyword: 1})
 
-    with pytest.raises(TypeError):
-        html.P(**{keyword: 1, underscored: 2})
-    with pytest.raises(TypeError):
-        html.P(**{underscored: 2, keyword: 1})
-
-    with pytest.raises(TypeError):
-        html.Br().append(**{keyword: 1, underscored: 2})
+    with pytest.raises(SyntaxError):
+        html.P(a=1, **{f"{keyword}_": "bla"}).append(**{keyword: 3})
