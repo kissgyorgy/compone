@@ -18,7 +18,6 @@ compone-preline = { path = "./frameworks/preline-ui", develop = true }
 pytest = "^8.0"
 pytest-sugar = "*"
 pytest-icdiff = "*"
-ruff = "*"
 tox = "^4"
 
 [tool.ruff.lint]

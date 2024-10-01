@@ -42,10 +42,10 @@ class _HTMLComponentBase(_ComponentBase):
                 raise ValueError("Both single and double quotes in attribute value")
             if keyword.iskeyword(no_underscore := key[:-1]):
                 key = no_underscore
-            # This is not using is_iterable, because there can be iterable objects
-            # which behave like strings, but not subclasses of str.
-            # For example gettext_lazy and reverse_lazy in Django, which are proxy objects
-            # We aim for the most common case here
+            # This is not using is_iterable, because there can be iterable
+            # objects which behave like strings, but not subclasses of str. For
+            # example gettext_lazy and reverse_lazy in Django, which are proxy
+            # objects We aim for the most common case here
             if isinstance(val, (tuple, list)):
                 val = " ".join(str(i) for i in val)
 

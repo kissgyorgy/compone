@@ -1,5 +1,3 @@
-node_bin := "node_modules/.bin"
-
 help:
     @just --list
 
@@ -7,6 +5,10 @@ help:
 install:
     bun install
 
+# Run linters and other checks
+check:
+    pre-commit run --all-files --hook-stage manual
+
 # Generate stories.css with tailwind continuously, reloading when files changed
 gencss:
-    {{node_bin}}/tailwindcss -i stories.css -o compone_stories/static/stories.css --watch
+    bun x tailwindcss -i stories.css -o compone_stories/static/stories.css --watch

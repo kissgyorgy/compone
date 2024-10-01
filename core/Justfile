@@ -5,7 +5,7 @@ help:
 
 # Run linters and other checks
 check:
-    ruff check .
+    pre-commit run --all-files --hook-stage manual
 
 test-versions *tox-params:
     tox {{ tox-params }}
