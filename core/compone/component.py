@@ -1,4 +1,5 @@
 import copy
+import functools
 import inspect
 import keyword
 from contextvars import ContextVar
@@ -238,7 +239,9 @@ class _ClassComponent(_ChildrenBase):
 def Component(
     func_or_class: Union[ComponentClass, Callable],
 ) -> Union[Type[_ClassComponent], Type[_FuncComponent]]:
-    if inspect.isfunction(func_or_class):
+    if inspect.isfunction(func_or_class) or isinstance(
+        func_or_class, functools._lru_cache_wrapper
+    ):
         return _make_func_component(func_or_class)
     elif inspect.isclass(func_or_class):
         return _make_class_component(func_or_class)
