@@ -19,6 +19,11 @@ pytest = "^8.0"
 pytest-sugar = "*"
 pytest-icdiff = "*"
 tox = "^4"
+jinja2 = "^3.1.4"
+pytest-benchmark = "^4.0.0"
+
+[tool.pytest.ini_options]
+addopts = "--benchmark-disable"
 
 [tool.ruff.lint]
 select = [
