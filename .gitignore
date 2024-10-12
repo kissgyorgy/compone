@@ -4,3 +4,5 @@ devenv.local.nix
 .pre-commit-config.yaml
 
 .benchmarks
+
+.venvs

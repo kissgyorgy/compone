@@ -4,13 +4,37 @@ let
 in
 {
   # https://devenv.sh/basics/
-  env.JUST_UNSTABLE = "1";
+  env = {
+    JUST_UNSTABLE = "1";
+  };
 
   # https://devenv.sh/packages/
   packages = with pkgs; [
     just
     watchexec
+    (buildEnv {
+      name = "python";
+      paths = [
+        python39
+        python310
+        python311
+        python312
+      ];
+      ignoreCollisions = true;
+    })
   ];
+
+  scripts.run-python-version.exec = ''
+    #!/usr/bin/env bash
+    VERSION=$1
+    shift
+    COMMAND="$@"
+    export POETRY_VIRTUALENVS_IN_PROJECT="false"
+    export POETRY_VIRTUALENVS_PATH="$DEVENV_ROOT/.venvs"
+    export POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON="true"
+    poetry -C $DEVENV_ROOT env use $VERSION
+    poetry -C $DEVENV_ROOT run -- $COMMAND
+  '';
 
   languages.python = {
     enable = true;

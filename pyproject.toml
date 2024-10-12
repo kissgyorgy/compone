@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Monoproject for development of all compone projects"
 authors = ["György Kiss <gyorgy@duck.com>"]
 license = "MIT"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -24,6 +25,7 @@ pytest-benchmark = "^4.0.0"
 
 [tool.pytest.ini_options]
 addopts = "--benchmark-disable"
+testpaths = ["core/tests"]
 
 [tool.ruff.lint]
 select = [

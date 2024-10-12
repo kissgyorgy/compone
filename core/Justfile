@@ -1,22 +1,26 @@
-pytest := "python -m pytest tests/"
-
 help:
     @just --list
+
 
 # Run linters and other checks
 check:
     pre-commit run --all-files --hook-stage manual
 
-test-versions *tox-params:
-    tox {{ tox-params }}
+# Run tests with all supported Python versions
+test-all:
+    #!/usr/bin/env bash
+    for version in 3.9 3.10 3.11 3.12; do
+        run-python-version $version python$version -m pytest
+    done
 
 # Run tests with pytest
-test *pytest-params:
-    {{ pytest }} {{ pytest-params }}
+test version="3.11" *pytest-params="":
+    #!/usr/bin/env bash
+    run-python-version $version python$version -m pytest {{ pytest-params }}
 
 # Run tests continuously and re-run them with watchexec if files changed
 watchtests *pytest-params:
-    watchexec --restart --exts py --stop-timeout 0 -- {{ pytest }} {{ pytest-params }}
+    watchexec --restart --exts py --stop-timeout 0 -- pytest {{ pytest-params }}
 
 testpypi-release: test
     #!/usr/bin/env bash
