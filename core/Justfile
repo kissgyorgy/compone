@@ -22,13 +22,13 @@ test version="3.11" *pytest-params="":
 watchtests *pytest-params:
     watchexec --restart --exts py --stop-timeout 0 -- pytest {{ pytest-params }}
 
-testpypi-release: test
+testpypi-release: check test-all
     #!/usr/bin/env bash
     export POETRY_PYPI_TOKEN_TESTPYPI=$(op.exe read op://Secrets/test-pypi-token/credential)
     export POETRY_REPOSITORIES_TESTPYPI_URL=https://test.pypi.org/legacy/
     poetry publish --build --repository testpypi
 
-release: test
+release: check test-all
     #!/usr/bin/env bash
     export POETRY_PYPI_TOKEN_PYPI=$(op.exe read op://Secrets/pypi-token/credential)
     poetry publish --build
