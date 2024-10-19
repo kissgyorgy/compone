@@ -14,6 +14,7 @@ compone-stories = { path = "./stories", develop = true }
 compone-cli = { path = "./cli", develop = true }
 compone-ssg = { path = "./ssg", develop = true }
 compone-preline = { path = "./frameworks/preline-ui", develop = true }
+mkdocs-material = "^9.5.41"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
