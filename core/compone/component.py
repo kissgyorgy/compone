@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import (
     Any,
     Callable,
+    Dict,
     Iterable,
     List,
     Optional,
@@ -43,7 +44,7 @@ class _ComponentBase:
         self._bound_args = self._bind_args(*args, **kwargs)
 
     @staticmethod
-    def _check_keywords(func: Callable, kwargs: dict[str, Any]):
+    def _check_keywords(func: Callable, kwargs: Dict[str, Any]):
         for name in kwargs.keys():
             if keyword.iskeyword(name):
                 func_name = getattr(func, "__qualname__", func.__name__)

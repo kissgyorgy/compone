@@ -1,4 +1,5 @@
 import textwrap
+from typing import Dict
 
 import click
 from compone import html
@@ -34,7 +35,7 @@ def convert_html(file, component_name: str):
     print(textwrap.indent(make_source(res), "    "))
 
 
-def _make_attribs(attribs: dict[str, str]):
+def _make_attribs(attribs: Dict[str, str]):
     attribs = {}
     for k, v in attribs.items():
         if k in {"class", "for", "is", "async"}:

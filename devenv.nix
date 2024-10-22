@@ -15,6 +15,7 @@ in
     (buildEnv {
       name = "python";
       paths = [
+        inputs.nixpkgs-python.packages.x86_64-linux."3.8"
         python39
         python310
         python311

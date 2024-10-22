@@ -1,6 +1,6 @@
 import inspect
 import keyword
-from typing import TypeVar
+from typing import Type, TypeVar
 
 from ..component import CompSelf, _ChildrenBase, _ComponentBase
 from ..escape import escape, safe
@@ -105,11 +105,11 @@ def _HtmlElem(html_tag: str, parent_class: T) -> T:
     )
 
 
-def _Elem(html_tag: str) -> type[_HTMLComponent]:
+def _Elem(html_tag: str) -> Type[_HTMLComponent]:
     """Create Component from HTML element on the fly."""
     return _HtmlElem(html_tag, _HTMLComponent)
 
 
-def _SelfElem(html_tag: str) -> type[_SelfClosingHTMLComponent]:
+def _SelfElem(html_tag: str) -> Type[_SelfClosingHTMLComponent]:
     """Create Component from self-closing HTML element on the fly."""
     return _HtmlElem(html_tag, _SelfClosingHTMLComponent)

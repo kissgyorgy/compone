@@ -1,6 +1,7 @@
 import inspect
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 from compone.component import _ComponentBase
 
@@ -40,7 +41,7 @@ class Config:
     def _content_dir(self):
         return Path(self.CONTENT_DIR).resolve()
 
-    def get_content_routes(self) -> list[PageRoute]:
+    def get_content_routes(self) -> List[PageRoute]:
         paths = []
         for content_path in self._content_dir.rglob("*"):
             if content_path.is_dir():

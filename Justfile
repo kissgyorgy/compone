@@ -1,5 +1,6 @@
 mod stories
 mod core
+mod docs
 
 help:
     @just --list
@@ -7,7 +8,7 @@ help:
 # Install packages in all Python version virtualenvs
 install-versions:
     #!/usr/bin/env bash
-    for version in 3.9 3.10 3.11 3.12; do \
+    for version in 3.8 3.9 3.10 3.11 3.12; do \
         run-python-version $version poetry install
     done
 

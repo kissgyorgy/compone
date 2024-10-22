@@ -4,6 +4,7 @@ import multiprocessing as mp
 import signal
 from concurrent.futures import ProcessPoolExecutor
 from operator import itemgetter
+from typing import List
 
 from .stories import REGISTERED_STORIES
 
@@ -41,7 +42,7 @@ class Renderer:
 
     TIMEOUT = 3
 
-    def __init__(self, modules: list[str]):
+    def __init__(self, modules: List[str]):
         self._modules = modules
         self._loop = None
         self._command_executor = None
@@ -76,7 +77,7 @@ class Renderer:
     async def render_story(self, story_name: str) -> str:
         return await self._run_command(_RenderProcess.render_story, story_name)
 
-    async def story_names(self) -> list[str]:
+    async def story_names(self) -> List[str]:
         return await self._run_command(_RenderProcess.story_names)
 
     def stop(self):
