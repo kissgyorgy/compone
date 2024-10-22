@@ -4,9 +4,6 @@ let
 in
 {
   # https://devenv.sh/basics/
-  env = {
-    JUST_UNSTABLE = "1";
-  };
 
   # https://devenv.sh/packages/
   packages = with pkgs; [
