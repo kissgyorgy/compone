@@ -9,6 +9,10 @@ in
   packages = with pkgs; [
     just
     watchexec
+    # needed for lxml
+    libxml2
+    libxslt
+    libz
     (buildEnv {
       name = "python";
       paths = [
@@ -17,6 +21,7 @@ in
         python310
         python311
         python312
+        python313
       ];
       ignoreCollisions = true;
     })
