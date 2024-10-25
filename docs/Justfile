@@ -1,0 +1,8 @@
+help:
+    @just --list
+
+serve:
+    mkdocs serve
+
+generate:
+    mkdocs build

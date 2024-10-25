@@ -12,7 +12,7 @@ import click
 )
 @click.pass_context
 def stories(ctx, modules):
-    """Storybook for Compone Components.
+    """Storybook for compone.Components.
 
     Specify Story modules as python import paths, e.g. 'my_project.stories'.
     """
