@@ -27,7 +27,7 @@ print(Hello("World")["My Child"])
 ```
 
 This is a silly example, but for more examples and features, check out the
-[Tutorial](https://python-compone.kissgyorgy.me/tutorial/) in the Documentation.
+[Tutorial](https://compone.kissgyorgy.me/tutorial/) in the Documentation.
 
 ## Installation
 
@@ -42,4 +42,4 @@ The only dependency is [markupsafe](https://pypi.org/project/MarkupSafe/) for es
 ## Documentation
 
 The documentation is available at
-[https://python-compone.kissgyorgy.me](https://python-compone.kissgyorgy.me/).
+[https://compone.kissgyorgy.me](https://compone.kissgyorgy.me/).
