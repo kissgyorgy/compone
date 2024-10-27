@@ -6,3 +6,6 @@ serve:
 
 generate:
     mkdocs build
+
+publish:
+    mkdocs gh-deploy
