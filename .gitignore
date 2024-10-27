@@ -1,3 +1,4 @@
+.venvs
 .devenv*
 devenv.local.nix
 .direnv
@@ -5,4 +6,4 @@ devenv.local.nix
 
 .benchmarks
 
-.venvs
+docs/site/

@@ -64,7 +64,10 @@ in
     check-added-large-files.enable = true;
     check-json.enable = true;
     check-toml.enable = true;
-    check-yaml.enable = true;
+    check-yaml = {
+      enable = true;
+      excludes = [ "docs/mkdocs.yml" ];
+    };
     trim-trailing-whitespace = {
       enable = true;
       excludes = [ ".*.md$" ];
