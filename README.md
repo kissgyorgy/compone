@@ -1,8 +1,8 @@
 # Compone for Python
 
 **Compone** is a Python **component framework** which makes it possible to
-**generate HTML, XML, RSS** (even robots.txt or PDF later) and other markup
-formats using type-safe **Python objects** with a very simple API.
+**generate HTML, XML**, RSS and other markup formats using type-safe
+**Python objects** with a very simple API.
 
 `compone.Component`s are **fully-reusable** Python classes in 
 **ANY Python web framework** or project out-of-the-box without extra code needed.
