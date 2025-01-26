@@ -9,12 +9,12 @@ check:
 # Run tests with all supported Python versions
 test-all:
     #!/usr/bin/env bash
-    for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
+    for version in 3.9 3.10 3.11 3.12 3.13; do
         run-python-version $version python$version -m pytest
     done
 
 # Run tests with pytest
-test version="3.11" *pytest-params="":
+test version="3.12" *pytest-params="":
     #!/usr/bin/env bash
     run-python-version $version python$version -m pytest {{ pytest-params }}
 
