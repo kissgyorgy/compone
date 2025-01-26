@@ -1,16 +1,9 @@
-[tool.poetry]
+[project]
 name = "compone-preline"
 version = "0.1.0"
 description = "Components for Preline UI (https://preline.co)"
-authors = ["György Kiss <kissgyorgy@me.com>"]
 license = "MIT"
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.8"
-compone = "^0.4.0"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.9"
+dependencies = ["compone>=0.4.0"]

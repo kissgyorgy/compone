@@ -1,18 +1,20 @@
-[tool.poetry]
+[project]
 name = "compone"
 version = "0.4.0"
 description = "Component framework for Python"
-authors = ["György Kiss <gyorgy@duck.com>"]
-license = "MIT"
+license.text = "MIT"
 readme = "README.md"
-package-mode = true
-packages = [{ include = "compone" }]
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
+requires-python = ">=3.9"
+dependencies = ["markupsafe>=3"]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-markupsafe = "*"
-
+[tool.pytest.ini_options]
+addopts = "--benchmark-disable"
+testpaths = ["tests"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest-benchmark>=4.0.0"]

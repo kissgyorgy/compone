@@ -1,21 +1,16 @@
-[tool.poetry]
+[project]
 name = "compone-ssg"
 version = "0.1.0"
 description = "Static Site Generator from compone Components"
-authors = ["György Kiss <kissgyorgy@me.com>"]
 license = "MIT"
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "compone>=0.4.0",
+    "markdown>=3.7",
+    "pyyaml>=6.0.2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-compone = "^0.4.0"
-markdown = "^3.6"
-pyyaml = "^6.0.1"
-
-[tool.poetry.plugins."compone.cli"]
+[project.entry-points.'compone.cli']
 ssg = "compone_ssg.cli:ssg"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

@@ -1,13 +1,20 @@
-[tool.poetry]
+[project]
 name = "compone-stories"
 version = "0.1.0"
 description = "Storybook for Compone"
-authors = ["György Kiss <kissgyorgy@me.com>"]
 license = "MIT"
 readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.1.8",
+    "compone>=0.4.0",
+    "hypercorn>=0.17.3",
+    "starlette>=0.44.0",
+    "watchfiles>=0.24.0",
+]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 compone = "^0.4.0"
 click = "^8.1.7"
 starlette = "^0.37.2"
@@ -16,7 +23,3 @@ watchfiles = "^0.21.0"
 
 [tool.poetry.plugins."compone.cli"]
 stories = "compone_stories.cli:stories"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

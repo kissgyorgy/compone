@@ -1,31 +1,33 @@
-[tool.poetry]
+[project]
 name = "compone-development"
 version = "0.1.0"
 description = "Monoproject for development of all compone projects"
-authors = ["György Kiss <gyorgy@duck.com>"]
-license = "MIT"
-package-mode = false
+license.text = "MIT"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["compone"]
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 
-[tool.poetry.dependencies]
-python = "^3.8"
+[dependency-groups]
+dev = [
+    "jinja2>=3.1.5",
+    "pytest>=8.3.4",
+    "pytest-benchmark>=4.0.0",
+    "pytest-icdiff>=0.9",
+    "pytest-sugar>=1.0.0",
+]
+docs = ["mkdocs-material>=9.5.50"]
 
-compone = { path = "./core", develop = true }
-compone-stories = { path = "./stories", develop = true }
-compone-cli = { path = "./cli", develop = true }
-compone-ssg = { path = "./ssg", develop = true }
-compone-preline = { path = "./frameworks/preline-ui", develop = true }
-mkdocs-material = "^9.5.41"
+[tool.uv.sources]
+compone = { workspace = true }
+compone-stories = { workspace = true }
+compone-cli = { workspace = true }
+compone-ssg = { workspace = true }
+compone-preline = { workspace = true }
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
-pytest-sugar = "*"
-pytest-icdiff = "*"
-jinja2 = "^3.1.4"
-pytest-benchmark = "^4.0.0"
-
-[tool.pytest.ini_options]
-addopts = "--benchmark-disable"
-testpaths = ["core/tests"]
+[tool.uv.workspace]
+members = ["core", "stories", "cli", "ssg", "frameworks/*", "empty"]
+exclude = ["core/example_components"]
 
 [tool.ruff.lint]
 select = [

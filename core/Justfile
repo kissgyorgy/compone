@@ -16,7 +16,7 @@ test-all:
 # Run tests with pytest
 test version="3.12" *pytest-params="":
     #!/usr/bin/env bash
-    run-python-version $version python$version -m pytest {{ pytest-params }}
+    run-python-version {{ version }} python -m pytest {{ pytest-params }}
 
 # Run tests continuously and re-run them with watchexec if files changed
 watchtests *pytest-params:

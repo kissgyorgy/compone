@@ -8,8 +8,8 @@ help:
 # Install packages in all Python version virtualenvs
 install-versions:
     #!/usr/bin/env bash
-        run-python-version $version poetry install
     for version in 3.9 3.10 3.11 3.12 3.13; do \
+        run-python-version $version uv sync
     done
 
 # Run tests in all projects

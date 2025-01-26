@@ -1,9 +1,13 @@
 { pkgs, lib, config, inputs, ... }:
 let
-  root-dir = config.devenv.root;
+  rootDir = config.devenv.root;
 in
 {
   # https://devenv.sh/basics/
+  env = {
+    UV_PYTHON_DOWNLOADS = "never";
+    UV_PROJECT_ENVIRONMENT = "${rootDir}/.venvs/py3.12";
+  };
 
   # https://devenv.sh/packages/
   packages = with pkgs; [
@@ -16,11 +20,12 @@ in
     (buildEnv {
       name = "python";
       paths = [
+        python312
         python39
         python310
         python311
-        python312
         python313
+        uv
       ];
       ignoreCollisions = true;
     })
@@ -31,22 +36,10 @@ in
     VERSION=$1
     shift
     COMMAND="$@"
-    export POETRY_VIRTUALENVS_IN_PROJECT="false"
-    export POETRY_VIRTUALENVS_PATH="$DEVENV_ROOT/.venvs"
-    export POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON="true"
-    poetry -C $DEVENV_ROOT env use $VERSION
-    poetry -C $DEVENV_ROOT run -- $COMMAND
+    export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
+    uv run -p python$VERSION -- $COMMAND
   '';
 
-  languages.python = {
-    enable = true;
-    poetry = {
-      enable = true;
-      activate.enable = true;
-      install.enable = true;
-      install.verbosity = "little";
-    };
-  };
   languages.javascript = {
     # for compone-stories
     bun.enable = true;
@@ -57,7 +50,7 @@ in
   pre-commit.hooks = {
     ruff = {
       enable = true;
-      args = [ "--config" "${root-dir}/pyproject.toml" ];
+      args = [ "--config" "${rootDir}/pyproject.toml" ];
     };
     ruff-format.enable = true;
     check-added-large-files.enable = true;

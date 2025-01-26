@@ -1,20 +1,12 @@
-[tool.poetry]
+[project]
 name = "compone-cli"
 version = "0.1.0"
 description = "CLI interface for Compone"
-authors = ["György Kiss <kissgyorgy@me.com>"]
 license = "MIT"
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 readme = "../README.md"
+requires-python = ">=3.9"
+dependencies = ["click>=8.1.8", "compone>=0.4.0", "lxml>=5.3.0"]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-compone = "^0.4.0"
-click = "^8.1.7"
-lxml = "^5.1.0"
-
-[tool.poetry.scripts]
-compone = 'compone_cli.cli:main'
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[project.scripts]
+compone = "compone_cli.cli:main"
