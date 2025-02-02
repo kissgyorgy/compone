@@ -20,6 +20,6 @@ test-all:
 check-all:
     pre-commit run --all-files --hook-stage manual
 
-# Completely wip the development environment and start from scratch
-reset-devenv:
-    rm -rf .venv .venvs .direnv .pre-commit-config.yaml .pytest_cache .ruff_cache
+# Completely wipe the development environment and start from scratch
+clean:
+    rm -rf .venvs .direnv .pre-commit-config.yaml .pytest_cache .ruff_cache

@@ -1,4 +1,4 @@
-{ pkgs, lib, config, inputs, ... }:
+{ pkgs, config, ... }:
 let
   rootDir = config.devenv.root;
 in
@@ -46,11 +46,17 @@ in
   };
 
   # https://devenv.sh/pre-commit-hooks/
-  pre-commit.default_stages = [ "pre-push" "manual" ];
+  pre-commit.default_stages = [
+    "pre-push"
+    "manual"
+  ];
   pre-commit.hooks = {
     ruff = {
       enable = true;
-      args = [ "--config" "${rootDir}/pyproject.toml" ];
+      args = [
+        "--config"
+        "${rootDir}/pyproject.toml"
+      ];
     };
     ruff-format.enable = true;
     check-added-large-files.enable = true;

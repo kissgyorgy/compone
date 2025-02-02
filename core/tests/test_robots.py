@@ -31,7 +31,7 @@ def test_robots_txt():
         r.Entry(user_agent=r.Bot.Google, disallow=["/admin/"]),
     ]
     expected = textwrap.dedent(
-        "User-agent: *\nDisallow: *\n\n" "User-agent: Googlebot\nDisallow: /admin/\n\n"
+        "User-agent: *\nDisallow: *\n\nUser-agent: Googlebot\nDisallow: /admin/\n\n"
     )
     assert str(robots_txt) == expected
 

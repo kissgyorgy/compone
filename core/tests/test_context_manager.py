@@ -52,12 +52,7 @@ def test_nested_same_level_multiple():
 
     body_str = str(body)
     assert isinstance(body_str, safe)
-    assert (
-        body_str == "<body>carrot"
-        "<div>radish</div>"
-        "<div>hazelnut</div>"
-        "pear</body>"
-    )
+    assert body_str == "<body>carrot<div>radish</div><div>hazelnut</div>pear</body>"
 
 
 def test_separate_components():
@@ -74,9 +69,5 @@ def test_separate_components():
         return span
 
     assert str(Main()) == (
-        '<div class="outer">'
-        '<div class="inner">'
-        "<span>hazelnut</span>"
-        "</div>"
-        "</div>"
+        '<div class="outer"><div class="inner"><span>hazelnut</span></div></div>'
     )
