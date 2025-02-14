@@ -149,6 +149,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "jinja2" },
     { name = "pytest-benchmark" },
 ]
 
@@ -156,7 +157,10 @@ dev = [
 requires-dist = [{ name = "markupsafe", specifier = ">=3" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest-benchmark", specifier = ">=4.0.0" }]
+dev = [
+    { name = "jinja2", specifier = ">=3.1.5" },
+    { name = "pytest-benchmark", specifier = ">=4.0.0" },
+]
 
 [[package]]
 name = "compone-cli"
