@@ -11,10 +11,10 @@ authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 [dependency-groups]
 dev = [
     "jinja2>=3.1.5",
-    "pytest>=8.3.4",
     "pytest-benchmark>=4.0.0",
     "pytest-icdiff>=0.9",
     "pytest-sugar>=1.0.0",
+    "pytest>=8.3.4",
 ]
 docs = ["mkdocs-material>=9.5.50"]
 
@@ -26,16 +26,16 @@ compone-ssg = { workspace = true }
 compone-preline = { workspace = true }
 
 [tool.uv.workspace]
-members = ["core", "stories", "cli", "ssg", "frameworks/*", "empty"]
+members = ["cli", "core", "empty", "frameworks/preline-ui", "ssg", "stories"]
 exclude = ["core/example_components"]
 
 [tool.ruff.lint]
 select = [
+    "C90", # mccabe code complexity
     "E",   # pycodestyle error
     "F",   # pyflakes
-    "W",   # pycodestyle warning like tab-indentation, trailing-whitespace
-    "C90", # mccabe code complexity
     "I",   # isort
+    "W",   # pycodestyle warning like tab-indentation, trailing-whitespace
 ]
 ignore = [
     "E731", # Do not assign a lambda expression, use a def

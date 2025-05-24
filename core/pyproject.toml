@@ -6,7 +6,9 @@ license.text = "MIT"
 readme = "README.md"
 authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 requires-python = ">=3.10"
-dependencies = ["markupsafe>=3"]
+dependencies = [
+    "markupsafe>=3"
+]
 
 [tool.pytest.ini_options]
 addopts = "--benchmark-disable"

@@ -21,5 +21,5 @@ starlette = "^0.37.2"
 hypercorn = "^0.17.0"
 watchfiles = "^1.0.0"
 
-[tool.poetry.plugins."compone.cli"]
+[project.entry-points.'compone.cli']
 stories = "compone_stories.cli:stories"
