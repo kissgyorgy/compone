@@ -9,8 +9,8 @@ check:
 # Run tests with all supported Python versions
 test-all:
     #!/usr/bin/env bash
-    for version in 3.9 3.10 3.11 3.12 3.13; do
-        run-python-version $version python$version -m pytest
+    for version in 3.10 3.11 3.12 3.13; do
+        run-version $version python$version -m pytest
     done
 
 # Run tests with pytest

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Monoproject for development of all compone projects"
 license.text = "MIT"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["compone"]
 authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 
