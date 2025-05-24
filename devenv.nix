@@ -30,13 +30,22 @@ in
     })
   ];
 
-  scripts.run-python-version.exec = ''
-    #!/usr/bin/env bash
+  enterShell = ''
+    source ${rootDir}/.venvs/py3.12/bin/activate
+  '';
+
+  scripts.activate-version.exec = ''
+    VERSION=$1
+    export VIRTUAL_ENV=${rootDir}/.venvs/py$VERSION
+    uv run --active -p python$VERSION -- $SHELL
+  '';
+
+  scripts.run-version.exec = ''
     VERSION=$1
     shift
     COMMAND="$@"
-    export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
-    uv run -p python$VERSION -- $COMMAND
+    export VIRTUAL_ENV=${rootDir}/.venvs/py$VERSION
+    uv run --active -p python$VERSION -- $COMMAND
   '';
 
   languages.javascript = {
