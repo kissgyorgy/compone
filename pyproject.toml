@@ -29,6 +29,12 @@ compone-preline = { workspace = true }
 members = ["cli", "core", "empty", "frameworks/preline-ui", "ssg", "stories"]
 exclude = ["core/example_components"]
 
+[tool.pytest.ini_options]
+norecursedirs = """
+    .*
+    nogit
+"""
+
 [tool.ruff.lint]
 select = [
     "C90", # mccabe code complexity
