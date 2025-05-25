@@ -2,10 +2,10 @@ from typing import Dict, Iterable, List, Optional, Union
 
 from ..utils import is_iterable
 
-AllowedClassTypes = Union[str, Iterable[Optional[str]], Dict[str, bool]]
+ClassTypes = Union[str, Iterable[Optional[str]], Dict[str, bool]]
 
 
-def _make_class_list(arg: AllowedClassTypes) -> Iterable[str]:
+def _make_class_list(arg: ClassTypes) -> Iterable[str]:
     if not arg:
         return tuple()
     elif isinstance(arg, str):
@@ -18,7 +18,7 @@ def _make_class_list(arg: AllowedClassTypes) -> Iterable[str]:
         raise TypeError(f"Invalid class type: {type(arg)} for {arg!r}")
 
 
-def classes(*args: AllowedClassTypes) -> List[str]:
+def classes(*args: ClassTypes) -> List[str]:
     """Convert different types of HTML class arguments to a list of classes.
     str --> list of classes
     list of str --> list of classes
