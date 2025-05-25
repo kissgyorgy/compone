@@ -1,4 +1,4 @@
-{ pkgs, config, ... }:
+{ pkgs, lib, config, ... }:
 let
   rootDir = config.devenv.root;
 in
@@ -7,6 +7,8 @@ in
   env = {
     UV_PYTHON_DOWNLOADS = "never";
     UV_PROJECT_ENVIRONMENT = "${rootDir}/.venvs/py3.12";
+    PYTHONPATH = lib.concatMapStringsSep ":" (p: "${rootDir}/${p}")
+      [ "core" "cli" "frameworks/bootstrap5" "stories" "ssg" ];
   };
 
   # https://devenv.sh/packages/
