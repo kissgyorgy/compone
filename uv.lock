@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 [manifest]
 members = [
     "compone",
+    "compone-bootstrap5",
     "compone-cli",
     "compone-development",
     "compone-preline",
@@ -151,6 +152,17 @@ dev = [
 ]
 
 [[package]]
+name = "compone-bootstrap5"
+version = "0.1.0"
+source = { editable = "frameworks/bootstrap5" }
+dependencies = [
+    { name = "compone" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "compone", editable = "core" }]
+
+[[package]]
 name = "compone-cli"
 version = "0.1.0"
 source = { virtual = "cli" }
@@ -203,7 +215,7 @@ docs = [{ name = "mkdocs-material", specifier = ">=9.5.50" }]
 [[package]]
 name = "compone-preline"
 version = "0.1.0"
-source = { virtual = "frameworks/preline-ui" }
+source = { editable = "frameworks/preline-ui" }
 dependencies = [
     { name = "compone" },
 ]

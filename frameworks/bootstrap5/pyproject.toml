@@ -1,0 +1,11 @@
+[project]
+name = "compone-bootstrap5"
+version = "0.1.0"
+description = "Bootstrap 5 framework components for Compone"
+authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
+license.text = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "compone>=0.4.0"
+]

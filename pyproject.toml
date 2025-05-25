@@ -24,9 +24,18 @@ compone-stories = { workspace = true }
 compone-cli = { workspace = true }
 compone-ssg = { workspace = true }
 compone-preline = { workspace = true }
+compone-bootstrap5 = { workspace = true }
 
 [tool.uv.workspace]
-members = ["cli", "core", "empty", "frameworks/preline-ui", "ssg", "stories"]
+members = [
+    "cli",
+    "core",
+    "empty",
+    "frameworks/bootstrap5",
+    "frameworks/preline-ui",
+    "ssg",
+    "stories",
+]
 exclude = ["core/example_components"]
 
 [tool.pytest.ini_options]
