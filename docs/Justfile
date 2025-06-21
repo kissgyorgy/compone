@@ -1,3 +1,5 @@
+set tempdir := "/tmp"
+
 help:
     @just --list
 
