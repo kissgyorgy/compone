@@ -2,7 +2,7 @@
 name = "compone-preline"
 version = "0.1.0"
 description = "Components for Preline UI (https://preline.co)"
-license = "MIT"
+license.text = "MIT"
 authors = [{ name = "György Kiss", email = "gyorgy@duck.com" }]
 readme = "README.md"
 requires-python = ">=3.10"
