@@ -6,7 +6,7 @@ in
   # https://devenv.sh/basics/
   env = {
     UV_PYTHON_DOWNLOADS = "never";
-    UV_PROJECT_ENVIRONMENT = "${rootDir}/.venvs/py3.12";
+    UV_PROJECT_ENVIRONMENT = "${rootDir}/.venvs/py3.13";
     PYTHONPATH = lib.concatMapStringsSep ":" (p: "${rootDir}/${p}")
       [ "core" "cli" "frameworks/bootstrap5" "stories" "ssg" ];
   };
@@ -33,12 +33,13 @@ in
   ];
 
   enterShell = ''
-    source ${rootDir}/.venvs/py3.12/bin/activate
+    source ${rootDir}/.venvs/py3.13/bin/activate
   '';
 
   scripts.activate-version.exec = ''
     VERSION=$1
-    export VIRTUAL_ENV=${rootDir}/.venvs/py$VERSION
+    export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
+    unset VIRTUAL_ENV
     uv run --active -p python$VERSION -- $SHELL
   '';
 
@@ -46,8 +47,9 @@ in
     VERSION=$1
     shift
     COMMAND="$@"
-    export VIRTUAL_ENV=${rootDir}/.venvs/py$VERSION
-    uv run --active -p python$VERSION -- $COMMAND
+    export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
+    unset VIRTUAL_ENV
+    uv run -p python$VERSION -- $COMMAND
   '';
 
   languages.javascript = {

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 
 [manifest]
@@ -165,7 +165,7 @@ requires-dist = [{ name = "compone", editable = "core" }]
 [[package]]
 name = "compone-cli"
 version = "0.1.0"
-source = { virtual = "cli" }
+source = { editable = "cli" }
 dependencies = [
     { name = "click" },
     { name = "compone" },
@@ -226,7 +226,7 @@ requires-dist = [{ name = "compone", editable = "core" }]
 [[package]]
 name = "compone-ssg"
 version = "0.1.0"
-source = { virtual = "ssg" }
+source = { editable = "ssg" }
 dependencies = [
     { name = "compone" },
     { name = "markdown" },
@@ -243,7 +243,7 @@ requires-dist = [
 [[package]]
 name = "compone-stories"
 version = "0.1.0"
-source = { virtual = "stories" }
+source = { editable = "stories" }
 dependencies = [
     { name = "click" },
     { name = "compone" },
