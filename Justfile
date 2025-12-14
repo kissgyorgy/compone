@@ -1,7 +1,6 @@
 mod stories
 mod core
 mod docs
-set tempdir := "/tmp"
 
 help:
     @just --list
