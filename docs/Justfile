@@ -1,8 +1,8 @@
 help:
     @just --list
 
-serve:
-    mkdocs serve
+serve *args:
+    mkdocs serve {{ args }}
 
 generate:
     mkdocs build
