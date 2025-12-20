@@ -1,7 +1,7 @@
 from .html.component import _ChildrenBase, _HTMLComponentBase, safe
 
-Xml10 = safe('<?xml version="1.0" encoding="UTF-8"?>')
-Xml11 = safe('<?xml version="1.1" encoding="UTF-8"?>')
+XML_10 = safe('<?xml version="1.0" encoding="UTF-8"?>')
+XML_11 = safe('<?xml version="1.1" encoding="UTF-8"?>')
 
 
 class Comment(_ChildrenBase, _HTMLComponentBase):

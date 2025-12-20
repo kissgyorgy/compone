@@ -3,13 +3,13 @@ from compone import xml
 
 
 def test_versions():
-    assert xml.Xml10 == '<?xml version="1.0" encoding="UTF-8"?>'
+    assert xml.XML_10 == '<?xml version="1.0" encoding="UTF-8"?>'
     with pytest.raises(TypeError):
-        xml.Xml10["cannot have children"]
+        xml.XML_10["cannot have children"]
 
-    assert xml.Xml11 == '<?xml version="1.1" encoding="UTF-8"?>'
+    assert xml.XML_11 == '<?xml version="1.1" encoding="UTF-8"?>'
     with pytest.raises(TypeError):
-        xml.Xml11["cannot have children"]
+        xml.XML_11["cannot have children"]
 
 
 def test_comments_are_unescaped():
