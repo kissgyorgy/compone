@@ -1,8 +1,8 @@
-from ..component import _Elem, _SelfElem
+from ..html_elements import _HTMLElement, _VoidHTMLElement
 
-Embed = _SelfElem("embed")
-Iframe = _Elem("iframe")
-Object = _Elem("object")
-Picture = _Elem("picture")
-Portal = _Elem("portal")
-Source = _SelfElem("source")
+Embed = _VoidHTMLElement("embed")
+Iframe = _HTMLElement("iframe")
+Object = _HTMLElement("object")
+Picture = _HTMLElement("picture")
+Portal = _HTMLElement("portal")
+Source = _VoidHTMLElement("source")

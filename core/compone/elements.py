@@ -2,15 +2,18 @@ import inspect
 import keyword
 from typing import Type, TypeVar
 
-from ..component import CompSelf, _ChildrenBase, _ComponentBase
-from ..escape import escape, safe
-from .helpers import classes
+from .component import _ChildrenBase, _ComponentBase
+from .escape import escape, safe
 
 T = TypeVar("T")
 
 
-class _HTMLComponentBase(_ComponentBase):
-    _html_tag: str
+class _Tag(_ComponentBase):
+    """Tag is the opening and closing parts of an element.
+    e.g. <div> and </div> are tags, "div" is the name of the element.
+    """
+
+    _name: str
     _attributes = None
     _sig = inspect.signature(lambda **kwargs: None)
     _var_keyword = "kwargs"
@@ -20,18 +23,7 @@ class _HTMLComponentBase(_ComponentBase):
         if self._attributes is not None:
             kwargs.update(self._attributes)
         self._original_kwargs = kwargs
-        self._parse_class(kwargs)
         super().__init__(self.__class__, **kwargs)
-
-    def append(self, **kwargs) -> CompSelf:
-        self._parse_class(kwargs)
-        return super().append(**kwargs)
-
-    @staticmethod
-    def _parse_class(kwargs):
-        class_ = kwargs.get("class_", None)
-        if parsed := classes(class_):
-            kwargs["class_"] = parsed
 
     def _get_attributes(self) -> str:  # noqa: C901
         bool_args = []
@@ -49,20 +41,20 @@ class _HTMLComponentBase(_ComponentBase):
             if isinstance(val, (tuple, list)):
                 val = " ".join(str(i) for i in val)
 
-            html_key = escape(key.replace("_", "-"))
+            key = escape(key.replace("_", "-"))
 
             if isinstance(val, bool):
                 # by HTML standard, False values must not be included in attributes
                 if not val:
                     continue
-                bool_args.append(html_key)
+                bool_args.append(key)
             else:
-                html_val = escape(val)
-                if '"' in html_val:
-                    html_attr = f"{html_key}='{html_val}'"
+                val = escape(val)
+                if '"' in val:
+                    attr = f"{key}='{val}'"
                 else:
-                    html_attr = f'{html_key}="{html_val}"'
-                keyval_args.append(html_attr)
+                    attr = f'{key}="{val}"'
+                keyval_args.append(attr)
 
         bool_prefix = " " if bool_args else ""
         bool_arguments = " ".join(bool_args)
@@ -73,43 +65,44 @@ class _HTMLComponentBase(_ComponentBase):
         return bool_prefix + bool_arguments + keyval_prefix + keyval_arguments
 
 
-class _HTMLComponent(_HTMLComponentBase, _ChildrenBase):
+class _Element(_Tag, _ChildrenBase):
     def _render(self, children: safe) -> safe:
         attributes = self._get_attributes()
-        return safe(f"<{self._html_tag}{attributes}>{children}</{self._html_tag}>")
+        return safe(f"<{self._name}{attributes}>{children}</{self._name}>")
 
 
-class _SelfClosingHTMLComponent(_HTMLComponentBase):
+class _VoidElement(_Tag):
     def __str__(self) -> safe:
         attributes = self._get_attributes()
-        return safe(f"<{self._html_tag}{attributes} />")
+        return safe(f"<{self._name}{attributes} />")
 
     def __eq__(self, other):
-        if not isinstance(other, _SelfClosingHTMLComponent):
+        if not isinstance(other, _VoidElement):
             return NotImplemented
         return (
             # It's a little bit cheaper to compare this way than rendering
-            self._html_tag == other._html_tag
+            self._name == other._name
             and self._original_kwargs == other._original_kwargs
         )
 
 
-def _HtmlElem(html_tag: str, parent_class: T) -> T:
+def _make_element(name: str, parent_class: T) -> T:
+    # TODO: validate element name
     return type(
-        html_tag.capitalize(),
+        name.capitalize(),
         (parent_class,),
         dict(
-            _html_tag=html_tag,
-            __module__="compone.html",
+            _name=name,
+            __module__=parent_class.__module__,
         ),
     )
 
 
-def _Elem(html_tag: str) -> Type[_HTMLComponent]:
-    """Create Component from HTML element on the fly."""
-    return _HtmlElem(html_tag, _HTMLComponent)
+def Element(name: str) -> Type[_Element]:
+    """Elements are basic building blocks of Components."""
+    return _make_element(name, _Element)
 
 
-def _SelfElem(html_tag: str) -> Type[_SelfClosingHTMLComponent]:
-    """Create Component from self-closing HTML element on the fly."""
-    return _HtmlElem(html_tag, _SelfClosingHTMLComponent)
+def VoidElement(name: str) -> Type[_VoidElement]:
+    """Void (self-closing) elements can't have any children."""
+    return _make_element(name, _VoidElement)

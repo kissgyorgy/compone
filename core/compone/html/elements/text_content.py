@@ -1,20 +1,20 @@
-from ..component import _Elem, _HTMLComponent, _SelfElem
+from ..html_elements import _HTMLElement, _HTMLElementBase, _VoidHTMLElement
 
-Blockquote = _Elem("blockquote")
-Dd = _Elem("dd")
-Dl = _Elem("dl")
-Dt = _Elem("dt")
-Div = _Elem("div")
-Figcaption = _Elem("figcaption")
-Figure = _Elem("figure")
-Hr = _SelfElem("hr")
-Menu = _Elem("menu")
-P = _Elem("p")
-Pre = _Elem("pre")
-Li = _Elem("li")
+Blockquote = _HTMLElement("blockquote")
+Dd = _HTMLElement("dd")
+Dl = _HTMLElement("dl")
+Dt = _HTMLElement("dt")
+Div = _HTMLElement("div")
+Figcaption = _HTMLElement("figcaption")
+Figure = _HTMLElement("figure")
+Hr = _VoidHTMLElement("hr")
+Menu = _HTMLElement("menu")
+P = _HTMLElement("p")
+Pre = _HTMLElement("pre")
+Li = _HTMLElement("li")
 
 
-class _ListComp(_HTMLComponent):
+class _ListComp(_HTMLElementBase):
     def __getitem__(self, children):
         if isinstance(children, str):
             children = (children,)
@@ -28,8 +28,8 @@ class _ListComp(_HTMLComponent):
 
 
 class Ul(_ListComp):
-    _html_tag = "ul"
+    _name = "ul"
 
 
 class Ol(_ListComp):
-    _html_tag = "ol"
+    _name = "ol"

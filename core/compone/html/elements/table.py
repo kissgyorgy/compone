@@ -1,12 +1,12 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Caption = _Elem("caption")
-Col = _Elem("col")
-Colgroup = _Elem("colgroup")
-Table = _Elem("table")
-Tbody = _Elem("tbody")
-Td = _Elem("td")
-Tfoot = _Elem("tfoot")
-Th = _Elem("th")
-Thead = _Elem("thead")
-Tr = _Elem("tr")
+Caption = _HTMLElement("caption")
+Col = _HTMLElement("col")
+Colgroup = _HTMLElement("colgroup")
+Table = _HTMLElement("table")
+Tbody = _HTMLElement("tbody")
+Td = _HTMLElement("td")
+Tfoot = _HTMLElement("tfoot")
+Th = _HTMLElement("th")
+Thead = _HTMLElement("thead")
+Tr = _HTMLElement("tr")

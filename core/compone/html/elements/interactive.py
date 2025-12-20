@@ -1,5 +1,5 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Details = _Elem("details")
-Dialog = _Elem("dialog")
-Summary = _Elem("summary")
+Details = _HTMLElement("details")
+Dialog = _HTMLElement("dialog")
+Summary = _HTMLElement("summary")

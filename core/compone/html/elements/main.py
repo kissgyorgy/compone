@@ -1,4 +1,4 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Html = _Elem("html")
-Body = _Elem("body")
+Html = _HTMLElement("html")
+Body = _HTMLElement("body")

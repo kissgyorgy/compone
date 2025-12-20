@@ -1,4 +1,4 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Slot = _Elem("slot")
-Template = _Elem("template")
+Slot = _HTMLElement("slot")
+Template = _HTMLElement("template")

@@ -1,5 +1,5 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Canvas = _Elem("canvas")
-Noscript = _Elem("noscript")
-Script = _Elem("script")
+Canvas = _HTMLElement("canvas")
+Noscript = _HTMLElement("noscript")
+Script = _HTMLElement("script")

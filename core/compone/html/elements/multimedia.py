@@ -1,8 +1,8 @@
-from ..component import _Elem, _SelfElem
+from ..html_elements import _HTMLElement, _VoidHTMLElement
 
-Area = _SelfElem("area")
-Audio = _Elem("audio")
-Img = _SelfElem("img")
-Map = _Elem("map")
-Track = _SelfElem("track")
-Video = _Elem("video")
+Area = _VoidHTMLElement("area")
+Audio = _HTMLElement("audio")
+Img = _VoidHTMLElement("img")
+Map = _HTMLElement("map")
+Track = _VoidHTMLElement("track")
+Video = _HTMLElement("video")

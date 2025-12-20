@@ -1,4 +1,4 @@
-from ..component import _Elem
+from ..html_elements import _HTMLElement
 
-Svg = _Elem("svg")
-Math = _Elem("math")
+Svg = _HTMLElement("svg")
+Math = _HTMLElement("math")

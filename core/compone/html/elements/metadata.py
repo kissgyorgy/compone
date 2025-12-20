@@ -2,13 +2,13 @@ from typing import Optional
 
 from ...component import Component
 from ...escape import safe
-from ..component import _Elem, _SelfElem
+from ..html_elements import _HTMLElement, _VoidHTMLElement
 
-Base = _Elem("base")
-Head = _Elem("head")
-Link = _SelfElem("link")
-Style = _Elem("style")
-Title = _Elem("title")
+Base = _HTMLElement("base")
+Head = _HTMLElement("head")
+Link = _VoidHTMLElement("link")
+Style = _HTMLElement("style")
+Title = _HTMLElement("title")
 
 
 @Component
@@ -29,7 +29,7 @@ def Meta(
     if itemprop:
         kwargs["itemprop"] = itemprop
 
-    return _SelfElem("meta")(**kwargs)
+    return _VoidHTMLElement("meta")(**kwargs)
 
 
 @Component

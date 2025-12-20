@@ -1,31 +1,31 @@
-from ..component import _Elem, _HTMLComponent, _SelfElem
+from ..html_elements import _HTMLElement, _HTMLElementBase, _VoidHTMLElement
 
-Datalist = _Elem("datalist")
-Fieldset = _Elem("fieldset")
-Button = _Elem("button")
-Form = _Elem("form")
-Input = _SelfElem("input")
-Label = _Elem("label")
-Legend = _Elem("legend")
-Meter = _Elem("meter")
-Optgroup = _Elem("optgroup")
-Option = _Elem("option")
-Output = _Elem("output")
-Progress = _Elem("progress")
-Select = _Elem("select")
-Textarea = _Elem("textarea")
+Datalist = _HTMLElement("datalist")
+Fieldset = _HTMLElement("fieldset")
+Button = _HTMLElement("button")
+Form = _HTMLElement("form")
+Input = _VoidHTMLElement("input")
+Label = _HTMLElement("label")
+Legend = _HTMLElement("legend")
+Meter = _HTMLElement("meter")
+Optgroup = _HTMLElement("optgroup")
+Option = _HTMLElement("option")
+Output = _HTMLElement("output")
+Progress = _HTMLElement("progress")
+Select = _HTMLElement("select")
+Textarea = _HTMLElement("textarea")
 
 
-class ButtonButton(_HTMLComponent):
-    _html_tag = "button"
+class ButtonButton(_HTMLElementBase):
+    _tag = "button"
     _attributes = {"type": "button"}
 
 
-class ResetButton(_HTMLComponent):
-    _html_tag = "button"
+class ResetButton(_HTMLElementBase):
+    _tag = "button"
     _attributes = {"type": "reset"}
 
 
-class SubmitButton(_HTMLComponent):
-    _html_tag = "button"
+class SubmitButton(_HTMLElementBase):
+    _tag = "button"
     _attributes = {"type": "submit"}

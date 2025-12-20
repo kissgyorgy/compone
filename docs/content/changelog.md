@@ -1,3 +1,11 @@
+## 0.4.1
+
+`Element`, `VoidElement` and `CustomElement` (aka. Web Components) are exposed 
+in the public API interface. Now arbitrary HTML or XML elements can be defined
+by the users.  
+No change in functionality.
+
+
 ## 0.4.0
 This is the biggest release yet, very close to the final API, but
 I want people to try it out first before I release 1.0.0.
