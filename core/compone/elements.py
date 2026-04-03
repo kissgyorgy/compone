@@ -32,7 +32,7 @@ class _Tag(_ComponentBase):
         for key, val in self.props.items():
             if isinstance(val, str) and '"' in val and "'" in val:
                 raise ValueError("Both single and double quotes in attribute value")
-            if keyword.iskeyword(no_underscore := key[:-1]):
+            if key.endswith("_") and keyword.iskeyword(no_underscore := key[:-1]):
                 key = no_underscore
             # This is not using is_iterable, because there can be iterable
             # objects which behave like strings, but not subclasses of str. For

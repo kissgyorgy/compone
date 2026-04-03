@@ -3,6 +3,7 @@ import re
 
 import pytest
 from compone import Component, html
+from compone.elements import Element, VoidElement
 
 
 @Component
@@ -283,3 +284,21 @@ def test_keyword_argument(keyword: str):
 
     with pytest.raises(SyntaxError):
         html.P(a=1, **{f"{keyword}_": "bla"}).append(**{keyword: 3})
+
+
+def test_keyword_trailing_underscore_is_stripped():
+    Elem = Element("elem")
+    Void = VoidElement("void")
+    assert str(Elem(for_="name")) == """<elem for="name"></elem>"""
+    assert str(Elem(class_="container")) == """<elem class="container"></elem>"""
+    assert str(Void(for_="name")) == """<void for="name" />"""
+
+
+def test_attribute_starting_with_keyword_is_not_stripped():
+    Elem = Element("elem")
+    Void = VoidElement("void")
+    assert str(Elem(form="myform")) == """<elem form="myform"></elem>"""
+    assert str(Elem(formaction="/submit")) == """<elem formaction="/submit"></elem>"""
+    assert str(Void(formmethod="post")) == """<void formmethod="post" />"""
+    assert str(Elem(format="json")) == """<elem format="json"></elem>"""
+    assert str(Elem(classes="multiple")) == """<elem classes="multiple"></elem>"""
