@@ -22,10 +22,10 @@ in
     (buildEnv {
       name = "python";
       paths = [
-        python312
-        python310
-        python311
+        python314
         python313
+        python312
+        python311
         uv
       ];
       ignoreCollisions = true;

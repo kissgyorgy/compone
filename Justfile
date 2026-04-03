@@ -18,7 +18,7 @@ test-all:
 
 # Run checks in all projects
 check-all:
-    pre-commit run --all-files --hook-stage manual
+    prek run --all-files --hook-stage manual
 
 # Completely wipe the development environment and start from scratch
 clean:

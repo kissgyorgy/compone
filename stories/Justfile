@@ -7,7 +7,7 @@ install:
 
 # Run linters and other checks
 check:
-    pre-commit run --all-files --hook-stage manual
+    prek run --all-files --hook-stage manual
 
 # Generate stories.css with tailwind continuously, reloading when files changed
 gencss:
