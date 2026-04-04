@@ -1,6 +1,7 @@
 help:
     @just --list
 
+dist-dir := justfile_directory() + "/dist/"
 
 # Run linters and other checks
 check:
@@ -22,13 +23,19 @@ test version="3.12" *pytest-params="":
 watchtests *pytest-params:
     watchexec --restart --exts py --stop-timeout 0 -- pytest {{ pytest-params }}
 
-testpypi-release: check test-all
+build-package:
     #!/usr/bin/env bash
-    export POETRY_PYPI_TOKEN_TESTPYPI=$(op.exe read op://Secrets/test-pypi-token/credential)
-    export POETRY_REPOSITORIES_TESTPYPI_URL=https://test.pypi.org/legacy/
-    poetry publish --build --repository testpypi
+    uv build --clear --sdist --wheel --out-dir {{ dist-dir }}
+
+testpypi-release: build-package
+    #!/usr/bin/env bash
+    export UV_PUBLISH_TOKEN=$(op.exe read op://Secrets/test-pypi-token/credential)
+    export UV_PUBLISH_URL=https://test.pypi.org/legacy/
+    ls -la {{ dist-dir }}
+    uv publish {{ dist-dir }}/*
 
 release: check test-all
     #!/usr/bin/env bash
-    export POETRY_PYPI_TOKEN_PYPI=$(op.exe read op://Secrets/pypi-token/credential)
-    poetry publish --build
+    export UV_PUBLISH_TOKEN=$(op.exe read op://Secrets/pypi-token/credential)
+    ls -la {{ dist-dir }}
+    uv publish {{ dist-dir }}/*
