@@ -7,3 +7,6 @@ devenv.local.nix
 .benchmarks
 
 docs/site/
+
+core/target/
+core/compone/*.so

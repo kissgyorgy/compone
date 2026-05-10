@@ -15,6 +15,10 @@ in
   packages = with pkgs; [
     just
     watchexec
+    # needed for the Rust/PyO3 core extension
+    cargo
+    rustc
+    maturin
     # needed for lxml
     libxml2
     libxslt

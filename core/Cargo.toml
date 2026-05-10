@@ -1,0 +1,15 @@
+[package]
+name = "compone-rust"
+version = "0.4.1"
+edition = "2021"
+rust-version = "1.75"
+description = "Rust extension for compone core"
+license = "MIT"
+repository = "https://github.com/kissgyorgy/compone"
+
+[lib]
+name = "compone"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23.5", features = ["abi3-py310", "extension-module"] }

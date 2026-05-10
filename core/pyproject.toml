@@ -15,8 +15,12 @@ addopts = "--benchmark-disable"
 testpaths = ["tests"]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.11,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "compone.compone"
+python-source = "."
 
 [dependency-groups]
 dev = [

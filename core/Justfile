@@ -7,15 +7,19 @@ dist-dir := justfile_directory() + "/dist/"
 check:
     prek run --all-files --hook-stage manual
 
+# Build the Rust extension in place for source-tree test runs
+build-extension:
+    maturin develop --release --skip-install
+
 # Run tests with all supported Python versions
-test-all:
+test-all: build-extension
     #!/usr/bin/env bash
     for version in 3.10 3.11 3.12 3.13; do
         run-version $version python$version -m pytest
     done
 
 # Run tests with pytest
-test version="3.12" *pytest-params="":
+test version="3.12" *pytest-params="": build-extension
     #!/usr/bin/env bash
     run-version {{ version }} python -m pytest {{ pytest-params }}
 
