@@ -1,5 +1,7 @@
 use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use pyo3::exceptions::{PyAssertionError, PyAttributeError, PySyntaxError, PyTypeError, PyValueError};
@@ -18,12 +20,14 @@ thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
     static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
     static RENDER_CACHE: RefCell<HashMap<RenderCacheKey, RenderedCacheEntry>> = RefCell::new(HashMap::new());
+    static RENDER_CACHE_ADMISSIONS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
 pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     PARENT_STACK.with(|stack| stack.borrow_mut().clear());
     CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
     RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
+    RENDER_CACHE_ADMISSIONS.with(|cache| cache.borrow_mut().clear());
     Ok(())
 }
 
@@ -68,7 +72,7 @@ pub struct RustComponent {
     pass_children: bool,
     children_positional_index: Option<usize>,
     var_keyword: Option<String>,
-    positional_args: HashSet<String>,
+    positional_args: Vec<String>,
     func: Option<Py<PyAny>>,
     user_class: Option<Py<PyAny>>,
 }
@@ -95,7 +99,7 @@ impl RustComponent {
             pass_children: false,
             children_positional_index: None,
             var_keyword: None,
-            positional_args: HashSet::new(),
+            positional_args: Vec::new(),
             func: None,
             user_class: None,
         }
@@ -364,21 +368,35 @@ fn initialize_instance(
 ) -> PyResult<()> {
     let py = slf.py();
     let metadata = class_metadata(slf.as_any())?;
-    let (args, arg_names, kwargs, arguments, original_kwargs) = if kwargs.is_none()
-        && matches!(metadata.kind, ComponentKind::Func | ComponentKind::Class)
-    {
-        let (args, arg_names, kwargs, arguments) =
-            bind_arguments_without_kwargs(py, &metadata.signature, args)?;
-        (args, arg_names, kwargs, arguments, Vec::new())
+    let (args, arg_names, kwargs, arguments, original_kwargs) = if can_bind_element_arguments_direct(&metadata, kwargs)? {
+        bind_element_arguments_direct(py, &metadata, args, kwargs)?
+    } else if kwargs.is_none() && matches!(metadata.kind, ComponentKind::Func | ComponentKind::Class) {
+        if let Some(bound) = bind_arguments_exact_positionals(py, &metadata.signature, args) {
+            bound
+        } else {
+            let (args, arg_names, kwargs, arguments) =
+                bind_arguments_without_kwargs(py, &metadata.signature, args)?;
+            (args, arg_names, kwargs, arguments, Vec::new())
+        }
+    } else if let Some(kwargs_dict) = kwargs {
+        if let Some(bound) = bind_arguments_exact_keywords(py, &metadata.signature, args, kwargs_dict)? {
+            bound
+        } else {
+            let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
+            if contains_python_keyword(&prepared_kwargs)? {
+                let keyword_func = keyword_check_target(slf.as_any())?;
+                check_keywords(&keyword_func, Some(&prepared_kwargs))?;
+            }
+            let (args, arg_names, kwargs, arguments) =
+                bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
+
+            let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
+            (args, arg_names, kwargs, arguments, original_kwargs)
+        }
     } else {
         let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
-        if contains_python_keyword(&prepared_kwargs)? {
-            let keyword_func = keyword_check_target(slf.as_any())?;
-            check_keywords(&keyword_func, Some(&prepared_kwargs))?;
-        }
         let (args, arg_names, kwargs, arguments) =
             bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
-
         let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
         (args, arg_names, kwargs, arguments, original_kwargs)
     };
@@ -400,13 +418,185 @@ fn initialize_instance(
     borrowed.pass_children = metadata.pass_children;
     borrowed.children_positional_index = metadata.children_positional_index;
     borrowed.var_keyword = metadata.var_keyword.clone();
-    borrowed.positional_args = metadata.positional_args.iter().cloned().collect();
+    borrowed.positional_args = metadata.positional_args.clone();
     borrowed.func = metadata.func.as_ref().map(|func| func.clone_ref(py));
     borrowed.user_class = metadata
         .user_class
         .as_ref()
         .map(|user_class| user_class.clone_ref(py));
     Ok(())
+}
+
+fn can_bind_element_arguments_direct(
+    metadata: &ClassMetadata,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<bool> {
+    if !matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void)
+        || metadata.attributes.is_some()
+    {
+        return Ok(false);
+    }
+
+    let Some(kwargs) = kwargs else {
+        return Ok(false);
+    };
+
+    if metadata.html {
+        if let Some(class_value) = kwargs.get_item("class_")? {
+            return Ok(can_parse_direct_html_class(&class_value));
+        }
+    }
+
+    Ok(true)
+}
+
+fn bind_element_arguments_direct(
+    py: Python<'_>,
+    metadata: &ClassMetadata,
+    args: &Bound<'_, PyTuple>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<(
+    Vec<Py<PyAny>>,
+    Vec<String>,
+    Vec<(String, Py<PyAny>)>,
+    Vec<(String, Py<PyAny>)>,
+    Vec<(String, Py<PyAny>)>,
+)> {
+    if !args.is_empty() {
+        return Err(PyTypeError::new_err("too many positional arguments"));
+    }
+
+    let mut attrs = Vec::new();
+    if let Some(kwargs) = kwargs {
+        for (key, value) in kwargs.iter() {
+            let key: String = key.extract()?;
+            if is_python_keyword(&key) {
+                return Err(PySyntaxError::new_err(format!(
+                    "keyword: {key:?} cannot be used as argument name in compone.{}, use an underscore at the end instead",
+                    metadata.name
+                )));
+            }
+
+            let value = if metadata.html && key == "class_" {
+                parse_direct_html_class(py, &value)?.unwrap_or_else(|| py.None())
+            } else {
+                value.unbind()
+            };
+            set_direct_attr(py, &mut attrs, key, value);
+        }
+    }
+
+    if let Some(default_attrs) = &metadata.attributes {
+        for item in default_attrs.bind(py).call_method0("items")?.try_iter()? {
+            let item = item?;
+            let pair = item.downcast::<PyTuple>()?;
+            let key: String = pair.get_item(0)?.extract()?;
+            set_direct_attr(py, &mut attrs, key, pair.get_item(1)?.unbind());
+        }
+    }
+
+    let original_kwargs = clone_kwarg_vec(py, &attrs);
+    Ok((Vec::new(), Vec::new(), attrs, Vec::new(), original_kwargs))
+}
+
+fn can_parse_direct_html_class(value: &Bound<'_, PyAny>) -> bool {
+    if value.is_none() || value.downcast::<PyString>().is_ok() {
+        return true;
+    }
+
+    if let Ok(tuple) = value.downcast::<PyTuple>() {
+        return tuple.iter().all(|item| item.is_none() || item.downcast::<PyString>().is_ok());
+    }
+
+    if let Ok(list) = value.downcast::<PyList>() {
+        return list.iter().all(|item| item.is_none() || item.downcast::<PyString>().is_ok());
+    }
+
+    if let Ok(dict) = value.downcast::<PyDict>() {
+        return dict
+            .iter()
+            .all(|(key, _)| key.downcast::<PyString>().is_ok());
+    }
+
+    false
+}
+
+fn parse_direct_html_class(
+    py: Python<'_>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<Option<Py<PyAny>>> {
+    let mut parsed = Vec::new();
+    let mut seen = HashSet::new();
+    collect_direct_html_classes(value, &mut parsed, &mut seen)?;
+    if parsed.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(PyList::new(py, parsed)?.unbind().into_any()))
+}
+
+fn collect_direct_html_classes(
+    value: &Bound<'_, PyAny>,
+    parsed: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+) -> PyResult<()> {
+    if value.is_none() || !value.is_truthy()? {
+        return Ok(());
+    }
+
+    if let Ok(string) = value.downcast::<PyString>() {
+        push_class_pieces(&string.to_string_lossy(), parsed, seen);
+        return Ok(());
+    }
+
+    if let Ok(tuple) = value.downcast::<PyTuple>() {
+        for item in tuple.iter() {
+            collect_direct_html_classes(&item, parsed, seen)?;
+        }
+        return Ok(());
+    }
+
+    if let Ok(list) = value.downcast::<PyList>() {
+        for item in list.iter() {
+            collect_direct_html_classes(&item, parsed, seen)?;
+        }
+        return Ok(());
+    }
+
+    if let Ok(dict) = value.downcast::<PyDict>() {
+        for (class_name, enabled) in dict.iter() {
+            if enabled.is_truthy()? {
+                let class_name = class_name.downcast::<PyString>()?;
+                let class_name = class_name.to_string_lossy().trim().to_string();
+                if !class_name.is_empty() && seen.insert(class_name.clone()) {
+                    parsed.push(class_name);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn push_class_pieces(value: &str, parsed: &mut Vec<String>, seen: &mut HashSet<String>) {
+    for piece in value.split_whitespace() {
+        let stripped = piece.trim();
+        if !stripped.is_empty() && seen.insert(stripped.to_string()) {
+            parsed.push(stripped.to_string());
+        }
+    }
+}
+
+fn set_direct_attr(
+    _py: Python<'_>,
+    attrs: &mut Vec<(String, Py<PyAny>)>,
+    key: String,
+    value: Py<PyAny>,
+) {
+    if let Some((_, existing_value)) = attrs.iter_mut().find(|(existing_key, _)| existing_key == &key) {
+        *existing_value = value;
+    } else {
+        attrs.push((key, value));
+    }
 }
 
 fn prepare_init_kwargs_for_metadata<'py>(
@@ -488,7 +678,7 @@ struct RenderedCacheEntry {
     safe: Py<PyAny>,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq)]
 struct RenderCacheKey {
     type_ptr: usize,
     args: Vec<CacheValue>,
@@ -496,7 +686,6 @@ struct RenderCacheKey {
     children: Vec<CacheValue>,
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
 enum CacheValue {
     None,
     Bool(bool),
@@ -505,10 +694,85 @@ enum CacheValue {
     Float(String),
     Str(String),
     SafeStr(String),
+    Identity { ptr: usize, _owner: Py<PyAny> },
     List(Vec<CacheValue>),
     Tuple(Vec<CacheValue>),
     Dict(Vec<(CacheValue, CacheValue)>),
     Component(Box<RenderCacheKey>),
+}
+
+impl PartialEq for CacheValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::Int(left), Self::Int(right)) => left == right,
+            (Self::Int64(left), Self::Int64(right)) => left == right,
+            (Self::Float(left), Self::Float(right)) => left == right,
+            (Self::Str(left), Self::Str(right)) => left == right,
+            (Self::SafeStr(left), Self::SafeStr(right)) => left == right,
+            (Self::Identity { ptr: left, .. }, Self::Identity { ptr: right, .. }) => left == right,
+            (Self::List(left), Self::List(right)) => left == right,
+            (Self::Tuple(left), Self::Tuple(right)) => left == right,
+            (Self::Dict(left), Self::Dict(right)) => left == right,
+            (Self::Component(left), Self::Component(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for CacheValue {}
+
+impl Hash for CacheValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::None => 0_u8.hash(state),
+            Self::Bool(value) => {
+                1_u8.hash(state);
+                value.hash(state);
+            }
+            Self::Int(value) => {
+                2_u8.hash(state);
+                value.hash(state);
+            }
+            Self::Int64(value) => {
+                3_u8.hash(state);
+                value.hash(state);
+            }
+            Self::Float(value) => {
+                4_u8.hash(state);
+                value.hash(state);
+            }
+            Self::Str(value) => {
+                5_u8.hash(state);
+                value.hash(state);
+            }
+            Self::SafeStr(value) => {
+                6_u8.hash(state);
+                value.hash(state);
+            }
+            Self::Identity { ptr, .. } => {
+                7_u8.hash(state);
+                ptr.hash(state);
+            }
+            Self::List(items) => {
+                8_u8.hash(state);
+                items.hash(state);
+            }
+            Self::Tuple(items) => {
+                9_u8.hash(state);
+                items.hash(state);
+            }
+            Self::Dict(items) => {
+                10_u8.hash(state);
+                items.hash(state);
+            }
+            Self::Component(key) => {
+                11_u8.hash(state);
+                key.hash(state);
+            }
+        }
+    }
 }
 
 struct RenderCacheKeyBuilder {
@@ -647,6 +911,116 @@ type BoundState = (
     Vec<(String, Py<PyAny>)>,
     Vec<(String, Py<PyAny>)>,
 );
+
+type InitBoundState = (
+    Vec<Py<PyAny>>,
+    Vec<String>,
+    Vec<(String, Py<PyAny>)>,
+    Vec<(String, Py<PyAny>)>,
+    Vec<(String, Py<PyAny>)>,
+);
+
+fn bind_arguments_exact_positionals(
+    py: Python<'_>,
+    signature: &SignatureSpec,
+    args: &Bound<'_, PyTuple>,
+) -> Option<InitBoundState> {
+    if args.len() != signature.params.len()
+        || signature.params.iter().any(|param| {
+            !matches!(param.kind, ParamKind::PosOnly | ParamKind::PosOrKw)
+                || param.default.is_some()
+        })
+    {
+        return None;
+    }
+
+    let mut bound_args = Vec::with_capacity(args.len());
+    let mut arg_names = Vec::with_capacity(args.len());
+    let mut arguments = Vec::with_capacity(args.len());
+    for (param, value) in signature.params.iter().zip(args.iter()) {
+        let value = value.unbind();
+        bound_args.push(value.clone_ref(py));
+        arg_names.push(param.name.clone());
+        arguments.push((param.name.clone(), value));
+    }
+
+    Some((bound_args, arg_names, Vec::new(), arguments, Vec::new()))
+}
+
+fn bind_arguments_exact_keywords(
+    py: Python<'_>,
+    signature: &SignatureSpec,
+    args: &Bound<'_, PyTuple>,
+    kwargs: &Bound<'_, PyDict>,
+) -> PyResult<Option<InitBoundState>> {
+    if !args.is_empty()
+        || signature.var_keyword.is_some()
+        || signature
+            .params
+            .iter()
+            .any(|param| matches!(param.kind, ParamKind::PosOnly | ParamKind::VarKw))
+    {
+        return Ok(None);
+    }
+
+    let mut found = 0;
+    let mut bound_args = Vec::new();
+    let mut arg_names = Vec::new();
+    let mut bound_kwargs = Vec::new();
+    let mut arguments = Vec::new();
+    for param in &signature.params {
+        let value = match kwargs.get_item(&param.name)? {
+            Some(value) => {
+                found += 1;
+                value.unbind()
+            }
+            None => match &param.default {
+                Some(default) => default.clone_ref(py),
+                None => {
+                    return Err(PyTypeError::new_err(format!(
+                        "missing a required argument: '{}'",
+                        param.name
+                    )))
+                }
+            },
+        };
+
+        match param.kind {
+            ParamKind::PosOrKw => {
+                bound_args.push(value.clone_ref(py));
+                arg_names.push(param.name.clone());
+            }
+            ParamKind::KwOnly => bound_kwargs.push((param.name.clone(), value.clone_ref(py))),
+            ParamKind::PosOnly | ParamKind::VarKw => unreachable!(),
+        }
+        arguments.push((param.name.clone(), value));
+    }
+
+    if found != kwargs.len() {
+        for key in kwargs.keys() {
+            let key: String = key.extract()?;
+            if is_python_keyword(&key) {
+                return Err(PySyntaxError::new_err(format!(
+                    "keyword: {key:?} cannot be used as argument name in compone, use an underscore at the end instead"
+                )));
+            }
+            if !signature.params.iter().any(|param| param.name == key) {
+                return Err(PyTypeError::new_err(format!(
+                    "got an unexpected keyword argument '{key}'"
+                )));
+            }
+        }
+    }
+
+    let original_kwargs = extract_string_dict_items(kwargs)?;
+    Ok(Some((
+        bound_args,
+        arg_names,
+        bound_kwargs,
+        arguments,
+        original_kwargs,
+    )))
+}
 
 fn bind_arguments_without_kwargs(
     py: Python<'_>,
@@ -890,7 +1264,9 @@ fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
             let rendered = render_instance_to_string_uncached(slf, kind)?;
             let safe_rendered = safe_from_string(py, rendered.clone())?;
-            render_cache_set(py, key, rendered, &safe_rendered);
+            if render_cache_should_store(&key) {
+                render_cache_set(py, key, rendered, &safe_rendered);
+            }
             return Ok(safe_rendered);
         }
     }
@@ -910,7 +1286,9 @@ fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String>
 
             let rendered = render_instance_to_string_uncached(slf, kind)?;
             let safe_rendered = safe_from_string(py, rendered.clone())?;
-            render_cache_set(py, key, rendered.clone(), &safe_rendered);
+            if render_cache_should_store(&key) {
+                render_cache_set(py, key, rendered.clone(), &safe_rendered);
+            }
             return Ok(rendered);
         }
     }
@@ -943,6 +1321,23 @@ fn render_cache_get_safe(py: Python<'_>, key: &RenderCacheKey) -> Option<Py<PyAn
 
 fn render_cache_get_string(key: &RenderCacheKey) -> Option<String> {
     RENDER_CACHE.with(|cache| cache.borrow().get(key).map(|entry| entry.rendered.clone()))
+}
+
+fn render_cache_should_store(key: &RenderCacheKey) -> bool {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    let fingerprint = hasher.finish();
+    RENDER_CACHE_ADMISSIONS.with(|admissions| {
+        let mut admissions = admissions.borrow_mut();
+        if admissions.contains(&fingerprint) {
+            return true;
+        }
+        if admissions.len() >= MAX_RENDER_CACHE_ENTRIES * 2 {
+            admissions.clear();
+        }
+        admissions.insert(fingerprint);
+        false
+    })
 }
 
 fn render_cache_set(
@@ -979,34 +1374,27 @@ fn component_cache_key(
     depth: usize,
 ) -> PyResult<Option<RenderCacheKey>> {
     let py = slf.py();
-    let (type_ptr, args, kwargs, children) = {
-        let borrowed = slf.borrow();
-        (
-            slf.as_any().get_type().as_ptr() as usize,
-            clone_py_vec(py, &borrowed.args),
-            clone_kwarg_vec(py, &borrowed.kwargs),
-            clone_py_vec(py, &borrowed.children),
-        )
-    };
+    let borrowed = slf.borrow();
+    let type_ptr = slf.as_any().get_type().as_ptr() as usize;
 
-    let mut keyed_args = Vec::with_capacity(args.len());
-    for value in args {
+    let mut keyed_args = Vec::with_capacity(borrowed.args.len());
+    for value in &borrowed.args {
         let Some(key) = builder.value_key(value.bind(py), depth)? else {
             return Ok(None);
         };
         keyed_args.push(key);
     }
 
-    let mut keyed_kwargs = Vec::with_capacity(kwargs.len());
-    for (name, value) in kwargs {
+    let mut keyed_kwargs = Vec::with_capacity(borrowed.kwargs.len());
+    for (name, value) in &borrowed.kwargs {
         let Some(key) = builder.value_key(value.bind(py), depth)? else {
             return Ok(None);
         };
-        keyed_kwargs.push((name, key));
+        keyed_kwargs.push((name.clone(), key));
     }
 
-    let mut keyed_children = Vec::with_capacity(children.len());
-    for value in children {
+    let mut keyed_children = Vec::with_capacity(borrowed.children.len());
+    for value in &borrowed.children {
         let Some(key) = builder.value_key(value.bind(py), depth)? else {
             return Ok(None);
         };
@@ -1044,21 +1432,24 @@ impl RenderCacheKeyBuilder {
             return Ok(Some(CacheValue::None));
         }
 
-        if let Ok(component) = value.downcast::<RustComponent>() {
-            let Some(key) = component_cache_key(component, self, depth - 1)? else {
-                return Ok(None);
-            };
-            return Ok(Some(CacheValue::Component(Box::new(key))));
-        }
-
         if let Ok(value_bool) = value.downcast::<PyBool>() {
             return Ok(Some(CacheValue::Bool(value_bool.extract()?)));
         }
 
+        let value_type = value.get_type().as_ptr();
+        if value_type == py.get_type::<PyString>().as_ptr()
+            || value_type == py.get_type::<PyInt>().as_ptr()
+            || value_type == py.get_type::<PyFloat>().as_ptr()
+        {
+            return Ok(Some(CacheValue::Identity {
+                ptr: value.as_ptr() as usize,
+                _owner: value.clone().unbind(),
+            }));
+        }
+
         if let Ok(value_string) = value.downcast::<PyString>() {
             let string = value_string.to_string_lossy().into_owned();
-            let exact_str = value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr();
-            if !exact_str && is_safe_or_markup_value(py, value)? {
+            if is_safe_or_markup_value(py, value)? {
                 return Ok(Some(CacheValue::SafeStr(string)));
             }
             return Ok(Some(CacheValue::Str(string)));
@@ -1077,6 +1468,13 @@ impl RenderCacheKeyBuilder {
             return Ok(Some(CacheValue::Float(
                 value.repr()?.to_string_lossy().into_owned(),
             )));
+        }
+
+        if let Ok(component) = value.downcast::<RustComponent>() {
+            let Some(key) = component_cache_key(component, self, depth - 1)? else {
+                return Ok(None);
+            };
+            return Ok(Some(CacheValue::Component(Box::new(key))));
         }
 
         if let Ok(tuple) = value.downcast::<PyTuple>() {
