@@ -98,7 +98,14 @@ fn render_attribute_value(value: &Bound<'_, PyAny>) -> PyResult<String> {
         return Ok(value.str()?.to_string_lossy().into_owned());
     }
 
-    if value.downcast::<PyInt>().is_ok() || value.downcast::<PyFloat>().is_ok() {
+    if let Ok(value_int) = value.downcast::<PyInt>() {
+        if let Ok(value_i64) = value_int.extract::<i64>() {
+            return Ok(value_i64.to_string());
+        }
+        return Ok(escape_str(&value.str()?.to_string_lossy()));
+    }
+
+    if value.downcast::<PyFloat>().is_ok() {
         return Ok(escape_str(&value.str()?.to_string_lossy()));
     }
 

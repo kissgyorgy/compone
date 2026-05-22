@@ -17,7 +17,7 @@ const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
 thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
     static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
-    static RENDER_CACHE: RefCell<HashMap<RenderCacheKey, Py<PyAny>>> = RefCell::new(HashMap::new());
+    static RENDER_CACHE: RefCell<HashMap<RenderCacheKey, RenderedCacheEntry>> = RefCell::new(HashMap::new());
 }
 
 pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
@@ -25,6 +25,29 @@ pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
     RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
     Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComponentKind {
+    Void,
+    Element,
+    Func,
+    Class,
+    Comment,
+    Unknown,
+}
+
+impl ComponentKind {
+    fn from_str(value: &str) -> Self {
+        match value {
+            "void" => Self::Void,
+            "element" => Self::Element,
+            "func" => Self::Func,
+            "class" => Self::Class,
+            "comment" => Self::Comment,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 #[pyclass(name = "_ComponentBase", subclass)]
@@ -38,7 +61,7 @@ pub struct RustComponent {
     original_kwargs: Option<Py<PyDict>>,
     parent: Option<Py<PyAny>>,
     user_instance: Option<Py<PyAny>>,
-    kind: String,
+    kind: ComponentKind,
     name: String,
     html: bool,
     list_only: bool,
@@ -65,7 +88,7 @@ impl RustComponent {
             original_kwargs: None,
             parent: None,
             user_instance: None,
-            kind: String::new(),
+            kind: ComponentKind::Unknown,
             name: String::new(),
             html: false,
             list_only: false,
@@ -305,7 +328,9 @@ impl RustComponent {
         }
 
         let other_component = other.downcast::<RustComponent>()?;
-        let result = if slf.borrow().kind == "void" && other_component.borrow().kind == "void" {
+        let result = if slf.borrow().kind == ComponentKind::Void
+            && other_component.borrow().kind == ComponentKind::Void
+        {
             let self_name = slf.borrow().name.clone();
             let other_name = other_component.borrow().name.clone();
             let self_kwargs = RustComponent::_original_kwargs(slf.clone())?
@@ -362,7 +387,7 @@ fn initialize_instance(
     borrowed.original_kwargs = Some(original_kwargs.unbind());
     borrowed.parent = None;
     borrowed.user_instance = None;
-    borrowed.kind = metadata.kind.clone();
+    borrowed.kind = metadata.kind;
     borrowed.name = metadata.name.clone();
     borrowed.html = metadata.html;
     borrowed.list_only = metadata.list_only;
@@ -390,7 +415,7 @@ fn prepare_init_kwargs_for_metadata<'py>(
         }
     }
 
-    if metadata.kind == "element" || metadata.kind == "void" {
+    if matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void) {
         if metadata.html {
             parse_html_class(&prepared)?;
         }
@@ -411,7 +436,7 @@ fn prepare_append_kwargs<'py>(
         prepared.set_item(key, value)?;
     }
     let metadata = class_metadata(obj)?;
-    if (metadata.kind == "element" || metadata.kind == "void") && metadata.html {
+    if matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void) && metadata.html {
         parse_html_class(&prepared)?;
     }
     Ok(prepared)
@@ -438,7 +463,7 @@ struct SignatureSpec {
 }
 
 struct ClassMetadata {
-    kind: String,
+    kind: ComponentKind,
     name: String,
     html: bool,
     list_only: bool,
@@ -450,6 +475,11 @@ struct ClassMetadata {
     func: Option<Py<PyAny>>,
     user_class: Option<Py<PyAny>>,
     attributes: Option<Py<PyAny>>,
+}
+
+struct RenderedCacheEntry {
+    rendered: String,
+    safe: Py<PyAny>,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -465,6 +495,7 @@ enum CacheValue {
     None,
     Bool(bool),
     Int(String),
+    Int64(i64),
     Float(String),
     Str(String),
     SafeStr(String),
@@ -539,7 +570,8 @@ fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Rc<ClassMetadata>> {
 impl ClassMetadata {
     fn from_class(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
         let cls = obj.get_type();
-        let kind: String = cls.getattr("_kind")?.extract()?;
+        let kind_string: String = cls.getattr("_kind")?.extract()?;
+        let kind = ComponentKind::from_str(&kind_string);
         let name = match cls.getattr("_name") {
             Ok(name) if !name.is_none() => name.extract()?,
             _ => String::new(),
@@ -769,68 +801,88 @@ fn keyword_check_target<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyA
 
 fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let kind = { slf.borrow().kind.clone() };
-    if kind == "func" {
+    let kind = { slf.borrow().kind };
+    if kind == ComponentKind::Func {
         if let Some(key) = render_cache_key(slf)? {
-            if let Some(cached) = render_cache_get(py, &key) {
+            if let Some(cached) = render_cache_get_safe(py, &key) {
                 return Ok(cached);
             }
 
-            let rendered = render_instance_to_string_uncached(slf, &kind)?;
-            let rendered = safe_from_string(py, rendered)?;
-            render_cache_set(py, key, &rendered);
-            return Ok(rendered);
+            let rendered = render_instance_to_string_uncached(slf, kind)?;
+            let safe_rendered = safe_from_string(py, rendered.clone())?;
+            render_cache_set(py, key, rendered, &safe_rendered);
+            return Ok(safe_rendered);
         }
     }
 
-    let rendered = render_instance_to_string_uncached(slf, &kind)?;
+    let rendered = render_instance_to_string_uncached(slf, kind)?;
     safe_from_string(py, rendered)
 }
 
 fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
-    let kind = { slf.borrow().kind.clone() };
-    if kind == "func" {
+    let kind = { slf.borrow().kind };
+    if kind == ComponentKind::Func {
         if let Some(key) = render_cache_key(slf)? {
-            if let Some(cached) = render_cache_get(py, &key) {
-                return Ok(cached.bind(py).str()?.to_string_lossy().into_owned());
+            if let Some(cached) = render_cache_get_string(&key) {
+                return Ok(cached);
             }
 
-            let rendered = render_instance_to_string_uncached(slf, &kind)?;
+            let rendered = render_instance_to_string_uncached(slf, kind)?;
             let safe_rendered = safe_from_string(py, rendered.clone())?;
-            render_cache_set(py, key, &safe_rendered);
+            render_cache_set(py, key, rendered.clone(), &safe_rendered);
             return Ok(rendered);
         }
     }
 
-    render_instance_to_string_uncached(slf, &kind)
+    render_instance_to_string_uncached(slf, kind)
 }
 
 fn render_instance_to_string_uncached(
     slf: &Bound<'_, RustComponent>,
-    kind: &str,
+    kind: ComponentKind,
 ) -> PyResult<String> {
     match kind {
-        "void" => render_void_to_string(slf),
-        "element" => render_element_to_string(slf),
-        "func" => render_func_component_to_string(slf),
-        "class" => render_class_component_to_string(slf),
-        "comment" => render_comment_to_string(slf),
-        _ => Ok(String::new()),
+        ComponentKind::Void => render_void_to_string(slf),
+        ComponentKind::Element => render_element_to_string(slf),
+        ComponentKind::Func => render_func_component_to_string(slf),
+        ComponentKind::Class => render_class_component_to_string(slf),
+        ComponentKind::Comment => render_comment_to_string(slf),
+        ComponentKind::Unknown => Ok(String::new()),
     }
 }
 
-fn render_cache_get(py: Python<'_>, key: &RenderCacheKey) -> Option<Py<PyAny>> {
-    RENDER_CACHE.with(|cache| cache.borrow().get(key).map(|value| value.clone_ref(py)))
+fn render_cache_get_safe(py: Python<'_>, key: &RenderCacheKey) -> Option<Py<PyAny>> {
+    RENDER_CACHE.with(|cache| {
+        cache
+            .borrow()
+            .get(key)
+            .map(|entry| entry.safe.clone_ref(py))
+    })
 }
 
-fn render_cache_set(py: Python<'_>, key: RenderCacheKey, value: &Py<PyAny>) {
+fn render_cache_get_string(key: &RenderCacheKey) -> Option<String> {
+    RENDER_CACHE.with(|cache| cache.borrow().get(key).map(|entry| entry.rendered.clone()))
+}
+
+fn render_cache_set(
+    py: Python<'_>,
+    key: RenderCacheKey,
+    rendered: String,
+    safe: &Py<PyAny>,
+) {
     RENDER_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.len() >= MAX_RENDER_CACHE_ENTRIES {
             cache.clear();
         }
-        cache.insert(key, value.clone_ref(py));
+        cache.insert(
+            key,
+            RenderedCacheEntry {
+                rendered,
+                safe: safe.clone_ref(py),
+            },
+        );
     });
 }
 
@@ -932,7 +984,10 @@ impl RenderCacheKeyBuilder {
             return Ok(Some(CacheValue::Str(string)));
         }
 
-        if value.downcast::<PyInt>().is_ok() {
+        if let Ok(value_int) = value.downcast::<PyInt>() {
+            if let Ok(value_i64) = value_int.extract::<i64>() {
+                return Ok(Some(CacheValue::Int64(value_i64)));
+            }
             return Ok(Some(CacheValue::Int(
                 value.str()?.to_string_lossy().into_owned(),
             )));
@@ -1025,27 +1080,91 @@ fn render_value_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
 
 fn render_element_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
-    let (name, kwargs) = {
+    let (name, attributes) = {
         let borrowed = slf.borrow();
-        (borrowed.name.clone(), clone_kwarg_vec(py, &borrowed.kwargs))
+        let name = borrowed.name.clone();
+        if simple_attribute_values(py, &borrowed.kwargs) {
+            let attributes = render_attributes_from_pairs(py, &borrowed.kwargs)?;
+            (name, attributes)
+        } else {
+            let kwargs = clone_kwarg_vec(py, &borrowed.kwargs);
+            drop(borrowed);
+            let attributes = render_attributes_from_pairs(py, &kwargs)?;
+            let children = render_children_to_string(slf)?;
+            return Ok(format!("<{name}{attributes}>{children}</{name}>"));
+        }
     };
-    let attributes = render_attributes_from_pairs(py, &kwargs)?;
     let children = render_children_to_string(slf)?;
     Ok(format!("<{name}{attributes}>{children}</{name}>"))
 }
 
 fn render_void_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
-    let (name, kwargs) = {
+    let (name, attributes) = {
         let borrowed = slf.borrow();
-        (borrowed.name.clone(), clone_kwarg_vec(py, &borrowed.kwargs))
+        let name = borrowed.name.clone();
+        if simple_attribute_values(py, &borrowed.kwargs) {
+            let attributes = render_attributes_from_pairs(py, &borrowed.kwargs)?;
+            (name, attributes)
+        } else {
+            let kwargs = clone_kwarg_vec(py, &borrowed.kwargs);
+            drop(borrowed);
+            let attributes = render_attributes_from_pairs(py, &kwargs)?;
+            return Ok(format!("<{name}{attributes} />"));
+        }
     };
-    let attributes = render_attributes_from_pairs(py, &kwargs)?;
     Ok(format!("<{name}{attributes} />"))
+}
+
+fn simple_attribute_values(py: Python<'_>, values: &[(String, Py<PyAny>)]) -> bool {
+    values
+        .iter()
+        .all(|(_, value)| simple_attribute_value(py, value.bind(py), 8))
+}
+
+fn simple_attribute_value(py: Python<'_>, value: &Bound<'_, PyAny>, depth: usize) -> bool {
+    if depth == 0 {
+        return false;
+    }
+
+    if value.is_none()
+        || value.downcast::<PyBool>().is_ok()
+        || value.downcast::<PyInt>().is_ok()
+        || value.downcast::<PyFloat>().is_ok()
+        || value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr()
+    {
+        return true;
+    }
+
+    if let Ok(tuple) = value.downcast::<PyTuple>() {
+        return tuple
+            .iter()
+            .all(|item| simple_attribute_value(py, &item, depth - 1));
+    }
+
+    if let Ok(list) = value.downcast::<PyList>() {
+        return list
+            .iter()
+            .all(|item| simple_attribute_value(py, &item, depth - 1));
+    }
+
+    false
 }
 
 fn call_func_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
+    {
+        let borrowed = slf.borrow();
+        if !borrowed.pass_children && borrowed.kwargs.is_empty() {
+            let func = borrowed.func.as_ref().map(|func| func.clone_ref(py)).ok_or_else(|| {
+                PyAttributeError::new_err("function component has no callable")
+            })?;
+            let args = PyTuple::new(py, borrowed.args.iter().map(|arg| arg.bind(py).clone()))?;
+            drop(borrowed);
+            return func.bind(py).call(&args, None).map(Bound::unbind);
+        }
+    }
+
     let (func, pass_children, children_positional_index, mut args, kwargs) = {
         let borrowed = slf.borrow();
         (
@@ -1366,7 +1485,7 @@ fn clone_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
         .map(|kwargs| kwargs.clone_ref(py));
     target.parent = None;
     target.user_instance = None;
-    target.kind = borrowed.kind.clone();
+    target.kind = borrowed.kind;
     target.name = borrowed.name.clone();
     target.html = borrowed.html;
     target.list_only = borrowed.list_only;
