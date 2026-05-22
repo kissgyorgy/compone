@@ -1,9 +1,9 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString, PyTuple};
+use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyTuple};
 
 use crate::component::{empty_param_specs, empty_signature, make_dynamic_class};
-use crate::escape::{escape_to_string, safe_from_string};
+use crate::escape::{escape_str, escape_to_string, is_safe_or_markup_value, safe_from_string};
 use crate::utils::{classes, is_python_bool, is_python_keyword, is_python_str};
 
 pub fn attrs_to_dict(attrs: &Bound<'_, PyAny>, target: &Bound<'_, PyDict>) -> PyResult<()> {
@@ -27,56 +27,35 @@ pub fn parse_html_class(kwargs: &Bound<'_, PyDict>) -> PyResult<()> {
     Ok(())
 }
 
-pub fn render_attributes(props: &Bound<'_, PyDict>) -> PyResult<String> {
-    let py = props.py();
+pub fn render_attributes_from_pairs(
+    py: Python<'_>,
+    props: &[(String, Py<PyAny>)],
+) -> PyResult<String> {
     let mut bool_args = Vec::new();
     let mut keyval_args = Vec::new();
 
-    for (raw_key, raw_value) in props.iter() {
-        let mut key: String = raw_key.extract()?;
-        let mut value = raw_value;
-
-        if is_python_str(&value)? {
-            let value_string = value.str()?.to_string_lossy().into_owned();
-            if value_string.contains('"') && value_string.contains('\'') {
-                return Err(PyValueError::new_err(
-                    "Both single and double quotes in attribute value",
-                ));
-            }
+    for (raw_key, raw_value) in props {
+        let value = raw_value.bind(py);
+        if value.is_none() {
+            continue;
         }
 
-        if let Some(no_underscore) = key.strip_suffix('_') {
-            if is_python_keyword(no_underscore) {
-                key = no_underscore.to_string();
-            }
-        }
-
-        if value.downcast::<PyTuple>().is_ok() || value.downcast::<PyList>().is_ok() {
-            let mut pieces = Vec::new();
-            for elem in value.try_iter()? {
-                pieces.push(elem?.str()?.to_string_lossy().into_owned());
-            }
-            let joined = pieces.join(" ");
-            value = PyString::new(py, &joined).into_any();
-        }
-
-        let escaped_key = escape_to_string(&PyString::new(py, &key.replace('_', "-")).into_any())?;
-
-        if is_python_bool(&value)? {
+        let escaped_key = render_attribute_key(raw_key);
+        if is_python_bool(value)? {
             let value_bool: bool = value.extract()?;
-            if !value_bool {
-                continue;
+            if value_bool {
+                bool_args.push(escaped_key);
             }
-            bool_args.push(escaped_key);
-        } else {
-            let escaped_value = escape_to_string(&value)?;
-            let attr = if escaped_value.contains('"') {
-                format!("{escaped_key}='{escaped_value}'")
-            } else {
-                format!("{escaped_key}=\"{escaped_value}\"")
-            };
-            keyval_args.push(attr);
+            continue;
         }
+
+        let escaped_value = render_attribute_value(value)?;
+        let attr = if escaped_value.contains('"') {
+            format!("{escaped_key}='{escaped_value}'")
+        } else {
+            format!("{escaped_key}=\"{escaped_value}\"")
+        };
+        keyval_args.push(attr);
     }
 
     let bool_prefix = if bool_args.is_empty() { "" } else { " " };
@@ -87,6 +66,51 @@ pub fn render_attributes(props: &Bound<'_, PyDict>) -> PyResult<String> {
     Ok(format!(
         "{bool_prefix}{bool_arguments}{keyval_prefix}{keyval_arguments}"
     ))
+}
+
+fn render_attribute_key(raw_key: &str) -> String {
+    let key = match raw_key.strip_suffix('_') {
+        Some(no_underscore) if is_python_keyword(no_underscore) => no_underscore,
+        _ => raw_key,
+    };
+    escape_str(&key.replace('_', "-"))
+}
+
+fn render_attribute_value(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    let py = value.py();
+    if is_python_str(value)? {
+        let value_string = value.str()?.to_string_lossy().into_owned();
+        if value_string.contains('"') && value_string.contains('\'') {
+            return Err(PyValueError::new_err(
+                "Both single and double quotes in attribute value",
+            ));
+        }
+        if is_safe_or_markup_value(py, value)? {
+            return Ok(value_string);
+        }
+        return Ok(escape_str(&value_string));
+    }
+
+    if is_safe_or_markup_value(py, value)? {
+        return Ok(value.str()?.to_string_lossy().into_owned());
+    }
+
+    if value.downcast::<PyInt>().is_ok() || value.downcast::<PyFloat>().is_ok() {
+        return Ok(escape_str(&value.str()?.to_string_lossy()));
+    }
+
+    if value.downcast::<PyTuple>().is_ok() || value.downcast::<PyList>().is_ok() {
+        let mut joined = String::new();
+        for elem in value.try_iter()? {
+            if !joined.is_empty() {
+                joined.push(' ');
+            }
+            joined.push_str(&elem?.str()?.to_string_lossy());
+        }
+        return Ok(escape_str(&joined));
+    }
+
+    escape_to_string(value)
 }
 
 #[pyfunction]
@@ -167,6 +191,7 @@ pub fn make_element_class(
     attrs.set_item("_name", name)?;
     attrs.set_item("_html", html)?;
     attrs.set_item("_list_only", list_only)?;
+    attrs.set_item("_children_positional_index", py.None())?;
     attrs.set_item("_sig", empty_signature(py)?)?;
     attrs.set_item("_param_specs", empty_param_specs(py)?)?;
     attrs.set_item("_positional_args", Vec::<String>::new())?;
@@ -184,6 +209,7 @@ pub fn make_xml_comment_class(py: Python<'_>) -> PyResult<Py<PyAny>> {
     attrs.set_item("_name", "Comment")?;
     attrs.set_item("_html", false)?;
     attrs.set_item("_list_only", false)?;
+    attrs.set_item("_children_positional_index", py.None())?;
     attrs.set_item("_sig", empty_signature(py)?)?;
     attrs.set_item("_param_specs", empty_param_specs(py)?)?;
     attrs.set_item("_positional_args", Vec::<String>::new())?;

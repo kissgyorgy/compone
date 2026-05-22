@@ -67,8 +67,38 @@ pub fn safe_from_string(py: Python<'_>, value: impl Into<String>) -> PyResult<Py
 }
 
 pub fn escape_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
-    let escaped = escape_value(value)?;
-    Ok(escaped.bind(value.py()).str()?.to_string_lossy().into_owned())
+    let py = value.py();
+    if is_safe_or_markup_value(py, value)? {
+        return Ok(value.str()?.to_string_lossy().into_owned());
+    }
+
+    if value.is_none() {
+        return Ok(String::new());
+    }
+
+    if value.downcast::<PyType>().is_ok() {
+        return Err(PyValueError::new_err(
+            "Cannot escape classes. Instantiate the class first!",
+        ));
+    }
+
+    if let Ok(string) = value.downcast::<PyString>() {
+        return Ok(escape_str(&string.to_string_lossy()));
+    }
+
+    if is_iterable_value(value)? {
+        let mut escaped = String::new();
+        for item in PyIterator::from_object(value)? {
+            escaped.push_str(&escape_to_string(&item?)?);
+        }
+        return Ok(escaped);
+    }
+
+    let stringified = value.call_method0("__str__")?;
+    if is_safe_or_markup_value(py, &stringified)? {
+        return Ok(stringified.str()?.to_string_lossy().into_owned());
+    }
+    Ok(escape_str(&stringified.str()?.to_string_lossy()))
 }
 
 pub fn escape_value(value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
@@ -116,6 +146,13 @@ pub fn escape_value(value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     safe.call1((escape_str(&string),)).map(Bound::unbind)
 }
 
+pub fn is_safe_or_markup_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    if value.is_instance(&safe_class(py)?)? {
+        return Ok(true);
+    }
+    is_markup_value(py, value)
+}
+
 fn is_markup_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
     match MARKUP_CLASS.get(py) {
         Some(markup) => value.is_instance(markup.bind(py)),
@@ -123,7 +160,7 @@ fn is_markup_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
     }
 }
 
-fn escape_str(value: &str) -> String {
+pub fn escape_str(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for char_ in value.chars() {
         match char_ {

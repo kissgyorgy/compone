@@ -1,20 +1,23 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use pyo3::exceptions::{PyAssertionError, PyAttributeError, PySyntaxError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyIterator, PyList, PyTuple, PyType};
 
-use crate::escape::{escape_value, safe_empty, safe_from_string};
-use crate::html::{attrs_to_dict, parse_html_class, render_attributes};
+use crate::escape::{escape_to_string, escape_value, safe_empty, safe_from_string};
+use crate::html::{attrs_to_dict, parse_html_class, render_attributes_from_pairs};
 use crate::utils::{is_iterable_value, is_python_keyword};
 
 thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
+    static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
 }
 
 pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     PARENT_STACK.with(|stack| stack.borrow_mut().clear());
+    CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
     Ok(())
 }
 
@@ -34,6 +37,7 @@ pub struct RustComponent {
     html: bool,
     list_only: bool,
     pass_children: bool,
+    children_positional_index: Option<usize>,
     var_keyword: Option<String>,
     positional_args: HashSet<String>,
     func: Option<Py<PyAny>>,
@@ -60,6 +64,7 @@ impl RustComponent {
             html: false,
             list_only: false,
             pass_children: false,
+            children_positional_index: None,
             var_keyword: None,
             positional_args: HashSet::new(),
             func: None,
@@ -327,12 +332,12 @@ fn initialize_instance(
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<()> {
     let py = slf.py();
-    let prepared_kwargs = prepare_init_kwargs(slf.as_any(), kwargs)?;
+    let metadata = class_metadata(slf.as_any())?;
+    let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
     if contains_python_keyword(&prepared_kwargs)? {
         let keyword_func = keyword_check_target(slf.as_any())?;
         check_keywords(&keyword_func, Some(&prepared_kwargs))?;
     }
-    let metadata = InstanceMetadata::from_class(slf.as_any())?;
     let (args, arg_names, kwargs, arguments) =
         bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
 
@@ -351,23 +356,27 @@ fn initialize_instance(
     borrowed.original_kwargs = Some(original_kwargs.unbind());
     borrowed.parent = None;
     borrowed.user_instance = None;
-    borrowed.kind = metadata.kind;
-    borrowed.name = metadata.name;
+    borrowed.kind = metadata.kind.clone();
+    borrowed.name = metadata.name.clone();
     borrowed.html = metadata.html;
     borrowed.list_only = metadata.list_only;
     borrowed.pass_children = metadata.pass_children;
-    borrowed.var_keyword = metadata.var_keyword;
-    borrowed.positional_args = metadata.positional_args.into_iter().collect();
-    borrowed.func = metadata.func;
-    borrowed.user_class = metadata.user_class;
+    borrowed.children_positional_index = metadata.children_positional_index;
+    borrowed.var_keyword = metadata.var_keyword.clone();
+    borrowed.positional_args = metadata.positional_args.iter().cloned().collect();
+    borrowed.func = metadata.func.as_ref().map(|func| func.clone_ref(py));
+    borrowed.user_class = metadata
+        .user_class
+        .as_ref()
+        .map(|user_class| user_class.clone_ref(py));
     Ok(())
 }
 
-fn prepare_init_kwargs<'py>(
-    obj: &Bound<'py, PyAny>,
+fn prepare_init_kwargs_for_metadata<'py>(
+    py: Python<'py>,
     kwargs: Option<&Bound<'py, PyDict>>,
+    metadata: &ClassMetadata,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let py = obj.py();
     let prepared = PyDict::new(py);
     if let Some(kwargs) = kwargs {
         for (key, value) in kwargs.iter() {
@@ -375,13 +384,12 @@ fn prepare_init_kwargs<'py>(
         }
     }
 
-    let kind = class_kind(obj)?;
-    if kind == "element" || kind == "void" {
-        if class_bool_attr(obj, "_html")? {
+    if metadata.kind == "element" || metadata.kind == "void" {
+        if metadata.html {
             parse_html_class(&prepared)?;
         }
-        if let Some(attrs) = class_optional_attr(obj, "_attributes")? {
-            attrs_to_dict(&attrs.bind(py), &prepared)?;
+        if let Some(attrs) = &metadata.attributes {
+            attrs_to_dict(attrs.bind(py), &prepared)?;
         }
     }
     Ok(prepared)
@@ -396,8 +404,8 @@ fn prepare_append_kwargs<'py>(
     for (key, value) in kwargs.iter() {
         prepared.set_item(key, value)?;
     }
-    let kind = class_kind(obj)?;
-    if (kind == "element" || kind == "void") && class_bool_attr(obj, "_html")? {
+    let metadata = class_metadata(obj)?;
+    if (metadata.kind == "element" || metadata.kind == "void") && metadata.html {
         parse_html_class(&prepared)?;
     }
     Ok(prepared)
@@ -423,17 +431,19 @@ struct SignatureSpec {
     var_keyword: Option<String>,
 }
 
-struct InstanceMetadata {
+struct ClassMetadata {
     kind: String,
     name: String,
     html: bool,
     list_only: bool,
     pass_children: bool,
+    children_positional_index: Option<usize>,
     var_keyword: Option<String>,
     positional_args: Vec<String>,
     signature: SignatureSpec,
     func: Option<Py<PyAny>>,
     user_class: Option<Py<PyAny>>,
+    attributes: Option<Py<PyAny>>,
 }
 
 impl SignatureSpec {
@@ -481,7 +491,20 @@ impl SignatureSpec {
     }
 }
 
-impl InstanceMetadata {
+fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Rc<ClassMetadata>> {
+    let key = obj.get_type().as_ptr() as usize;
+    if let Some(metadata) = CLASS_CACHE.with(|cache| cache.borrow().get(&key).cloned()) {
+        return Ok(metadata);
+    }
+
+    let metadata = Rc::new(ClassMetadata::from_class(obj)?);
+    CLASS_CACHE.with(|cache| {
+        cache.borrow_mut().insert(key, metadata.clone());
+    });
+    Ok(metadata)
+}
+
+impl ClassMetadata {
     fn from_class(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
         let cls = obj.get_type();
         let kind: String = cls.getattr("_kind")?.extract()?;
@@ -501,6 +524,10 @@ impl InstanceMetadata {
             Ok(value) => value.extract()?,
             Err(_) => false,
         };
+        let children_positional_index = match cls.getattr("_children_positional_index") {
+            Ok(value) if !value.is_none() => Some(value.extract()?),
+            _ => None,
+        };
         let var_keyword = match cls.getattr("_var_keyword") {
             Ok(value) if !value.is_none() => Some(value.extract()?),
             _ => None,
@@ -515,17 +542,23 @@ impl InstanceMetadata {
             Ok(value) if !value.is_none() => Some(value.unbind()),
             _ => None,
         };
+        let attributes = match cls.getattr("_attributes") {
+            Ok(value) if !value.is_none() => Some(value.unbind()),
+            _ => None,
+        };
         Ok(Self {
             kind,
             name,
             html,
             list_only,
             pass_children,
+            children_positional_index,
             var_keyword,
             positional_args,
             signature,
             func,
             user_class,
+            attributes,
         })
     }
 }
@@ -717,56 +750,100 @@ fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
 fn render_children(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    if slf.borrow().children.is_empty() {
-        return safe_empty(py);
+    let children = {
+        let borrowed = slf.borrow();
+        if borrowed.children.is_empty() {
+            return safe_empty(py);
+        }
+        clone_py_vec(py, &borrowed.children)
+    };
+    if children.len() == 1 {
+        return escape_value(children[0].bind(py));
     }
-    let tuple = PyTuple::new(
-        py,
-        slf.borrow().children.iter().map(|child| child.bind(py).clone()),
-    )?;
-    escape_value(&tuple.into_any())
+
+    let mut rendered = String::new();
+    for child in children {
+        rendered.push_str(&escape_to_string(child.bind(py))?);
+    }
+    safe_from_string(py, rendered)
+}
+
+fn render_children_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
+    let py = slf.py();
+    let children = {
+        let borrowed = slf.borrow();
+        if borrowed.children.is_empty() {
+            return Ok(String::new());
+        }
+        clone_py_vec(py, &borrowed.children)
+    };
+    let mut rendered = String::new();
+    for child in children {
+        rendered.push_str(&escape_to_string(child.bind(py))?);
+    }
+    Ok(rendered)
 }
 
 fn render_element(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
-    let name = slf.borrow().name.clone();
-    let props = build_props_dict(slf)?;
-    let attributes = render_attributes(&props)?;
-    let children = render_children(slf)?;
-    safe_from_string(
-        slf.py(),
-        format!(
-            "<{name}{attributes}>{}</{name}>",
-            children.bind(slf.py()).str()?
-        ),
-    )
+    let py = slf.py();
+    let (name, kwargs) = {
+        let borrowed = slf.borrow();
+        (borrowed.name.clone(), clone_kwarg_vec(py, &borrowed.kwargs))
+    };
+    let attributes = render_attributes_from_pairs(py, &kwargs)?;
+    let children = render_children_to_string(slf)?;
+    safe_from_string(py, format!("<{name}{attributes}>{children}</{name}>"))
 }
 
 fn render_void(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
-    let name = slf.borrow().name.clone();
-    let props = build_props_dict(slf)?;
-    let attributes = render_attributes(&props)?;
-    safe_from_string(slf.py(), format!("<{name}{attributes} />"))
+    let py = slf.py();
+    let (name, kwargs) = {
+        let borrowed = slf.borrow();
+        (borrowed.name.clone(), clone_kwarg_vec(py, &borrowed.kwargs))
+    };
+    let attributes = render_attributes_from_pairs(py, &kwargs)?;
+    safe_from_string(py, format!("<{name}{attributes} />"))
 }
 
 fn render_func_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let (func, pass_children, args, kwargs) = {
+    let (func, pass_children, children_positional_index, mut args, kwargs) = {
         let borrowed = slf.borrow();
         (
             borrowed.func.as_ref().map(|func| func.clone_ref(py)).ok_or_else(|| {
                 PyAttributeError::new_err("function component has no callable")
             })?,
             borrowed.pass_children,
+            borrowed.children_positional_index,
             clone_py_vec(py, &borrowed.args),
             clone_kwarg_vec(py, &borrowed.kwargs),
         )
     };
-    let args = PyTuple::new(py, args)?;
-    let call_kwargs = dict_from_string_items(py, &kwargs)?;
-    if pass_children {
-        call_kwargs.set_item("children", render_children(slf)?)?;
+
+    let children = if pass_children {
+        Some(render_children(slf)?)
+    } else {
+        None
+    };
+    if let (Some(index), Some(children)) = (children_positional_index, &children) {
+        args.insert(index, children.clone_ref(py));
     }
-    let content = func.bind(py).call(&args, Some(&call_kwargs))?;
+    let args = PyTuple::new(py, args)?;
+
+    let content = if kwargs.is_empty() && (!pass_children || children_positional_index.is_some()) {
+        func.bind(py).call(&args, None)?
+    } else {
+        let call_kwargs = dict_from_string_items(py, &kwargs)?;
+        if pass_children && children_positional_index.is_none() {
+            call_kwargs.set_item(
+                "children",
+                children
+                    .as_ref()
+                    .expect("children must be rendered when pass_children is true"),
+            )?;
+        }
+        func.bind(py).call(&args, Some(&call_kwargs))?
+    };
     escape_value(&content)
 }
 
@@ -1022,17 +1099,46 @@ fn make_new(slf: &Bound<'_, RustComponent>, new_arguments: &Bound<'_, PyDict>) -
 }
 
 fn make_new_with_same_arguments(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
+    clone_component(slf)
+}
+
+fn clone_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let (args, kwargs) = {
-        let borrowed = slf.borrow();
-        (
-            clone_py_vec(py, &borrowed.args),
-            clone_kwarg_vec(py, &borrowed.kwargs),
-        )
-    };
-    let args = PyTuple::new(py, args)?;
-    let kwargs = dict_from_string_items(py, &kwargs)?;
-    slf.as_any().get_type().call(&args, Some(&kwargs)).map(Bound::unbind)
+    let cls = slf.as_any().get_type();
+    let new = cls.getattr("__new__")?.call1((cls,))?;
+    let new_component = new.downcast::<RustComponent>()?;
+
+    let borrowed = slf.borrow();
+    let mut target = new_component.borrow_mut();
+    target.bound_args = None;
+    target.args = clone_py_vec(py, &borrowed.args);
+    target.arg_names = borrowed.arg_names.clone();
+    target.kwargs = clone_kwarg_vec(py, &borrowed.kwargs);
+    target.arguments = clone_kwarg_vec(py, &borrowed.arguments);
+    target.children.clear();
+    target.original_kwargs = borrowed
+        .original_kwargs
+        .as_ref()
+        .map(|kwargs| kwargs.clone_ref(py));
+    target.parent = None;
+    target.user_instance = None;
+    target.kind = borrowed.kind.clone();
+    target.name = borrowed.name.clone();
+    target.html = borrowed.html;
+    target.list_only = borrowed.list_only;
+    target.pass_children = borrowed.pass_children;
+    target.children_positional_index = borrowed.children_positional_index;
+    target.var_keyword = borrowed.var_keyword.clone();
+    target.positional_args = borrowed.positional_args.clone();
+    target.func = borrowed.func.as_ref().map(|func| func.clone_ref(py));
+    target.user_class = borrowed
+        .user_class
+        .as_ref()
+        .map(|user_class| user_class.clone_ref(py));
+    drop(target);
+    drop(borrowed);
+
+    Ok(new.unbind())
 }
 
 pub fn class_kind(obj: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -1041,22 +1147,6 @@ pub fn class_kind(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 
 pub fn class_string_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<String> {
     obj.get_type().getattr(attr)?.extract()
-}
-
-pub fn class_bool_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<bool> {
-    match obj.get_type().getattr(attr) {
-        Ok(value) => value.extract(),
-        Err(_) => Ok(false),
-    }
-}
-
-pub fn class_optional_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Option<Py<PyAny>>> {
-    let value = obj.get_type().getattr(attr)?;
-    if value.is_none() {
-        Ok(None)
-    } else {
-        Ok(Some(value.unbind()))
-    }
 }
 
 pub fn empty_signature(py: Python<'_>) -> PyResult<Py<PyAny>> {
@@ -1121,7 +1211,7 @@ pub fn Component(func_or_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
 fn make_func_component(func: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let py = func.py();
     let (orig_sig, positional_args) = make_sig(func)?;
-    let (parameters, pass_children, var_keyword) = filter_signature(
+    let (parameters, pass_children, children_positional_index, var_keyword) = filter_signature(
         &orig_sig,
         |name| name != "children",
         true,
@@ -1139,6 +1229,7 @@ fn make_func_component(func: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     attrs.set_item("_positional_args", positional_args)?;
     attrs.set_item("_var_keyword", var_keyword)?;
     attrs.set_item("_pass_children", pass_children)?;
+    attrs.set_item("_children_positional_index", children_positional_index)?;
     let name: String = func.getattr("__name__")?.extract()?;
     let module: String = func.getattr("__module__")?.extract()?;
     make_dynamic_class(py, &name, &module, &attrs)
@@ -1155,7 +1246,7 @@ fn make_class_component(user_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let py = user_class.py();
     let init = user_class.getattr("__init__")?;
     let (orig_sig, positional_args) = make_sig(&init)?;
-    let (parameters, _, var_keyword) = filter_signature(
+    let (parameters, _, _, var_keyword) = filter_signature(
         &orig_sig,
         |name| name != "self" && name != "children",
         false,
@@ -1177,6 +1268,7 @@ fn make_class_component(user_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     attrs.set_item("_positional_args", positional_args)?;
     attrs.set_item("_var_keyword", var_keyword)?;
     attrs.set_item("_pass_children", pass_children)?;
+    attrs.set_item("_children_positional_index", py.None())?;
     let name: String = user_class.getattr("__name__")?.extract()?;
     let module: String = user_class.getattr("__module__")?.extract()?;
     make_dynamic_class(py, &name, &module, &attrs)
@@ -1213,15 +1305,19 @@ fn filter_signature<F>(
     sig: &Bound<'_, PyAny>,
     include: F,
     track_children: bool,
-) -> PyResult<(Py<PyAny>, bool, Option<String>)>
+) -> PyResult<(Py<PyAny>, bool, Option<usize>, Option<String>)>
 where
     F: Fn(&str) -> bool,
 {
     let py = sig.py();
     let parameter_cls = py.import("inspect")?.getattr("Parameter")?;
+    let pos_only_kind = parameter_cls.getattr("POSITIONAL_ONLY")?;
+    let pos_or_kw_kind = parameter_cls.getattr("POSITIONAL_OR_KEYWORD")?;
     let var_keyword_kind = parameter_cls.getattr("VAR_KEYWORD")?;
     let parameters = PyList::empty(py);
     let mut pass_children = false;
+    let mut children_positional_index = None;
+    let mut positional_index = 0_usize;
     let mut var_keyword = None;
     let parameters_mapping = sig.getattr("parameters")?;
     for item in parameters_mapping.call_method0("items")?.try_iter()? {
@@ -1229,18 +1325,30 @@ where
         let pair = item.downcast::<PyTuple>()?;
         let name: String = pair.get_item(0)?.extract()?;
         let param = pair.get_item(1)?;
+        let kind = param.getattr("kind")?;
+        let positional = kind.eq(&pos_only_kind)? || kind.eq(&pos_or_kw_kind)?;
         if track_children && name == "children" {
             pass_children = true;
+            if positional {
+                children_positional_index = Some(positional_index);
+            }
         }
-        let kind = param.getattr("kind")?;
         if kind.eq(&var_keyword_kind)? {
             var_keyword = Some(name.clone());
         }
         if include(&name) {
             parameters.append(param)?;
+            if positional {
+                positional_index += 1;
+            }
         }
     }
-    Ok((parameters.unbind().into_any(), pass_children, var_keyword))
+    Ok((
+        parameters.unbind().into_any(),
+        pass_children,
+        children_positional_index,
+        var_keyword,
+    ))
 }
 
 fn build_param_specs(parameters: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
