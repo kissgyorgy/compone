@@ -58,7 +58,7 @@ pub struct RustComponent {
     kwargs: Vec<(String, Py<PyAny>)>,
     arguments: Vec<(String, Py<PyAny>)>,
     children: Vec<Py<PyAny>>,
-    original_kwargs: Option<Py<PyDict>>,
+    original_kwargs: Option<Vec<(String, Py<PyAny>)>>,
     parent: Option<Py<PyAny>>,
     user_instance: Option<Py<PyAny>>,
     kind: ComponentKind,
@@ -153,7 +153,7 @@ impl RustComponent {
         let py = slf.py();
         let borrowed = slf.borrow();
         match &borrowed.original_kwargs {
-            Some(kwargs) => Ok(kwargs.clone_ref(py).into_any()),
+            Some(kwargs) => Ok(dict_from_string_items(py, kwargs)?.unbind().into_any()),
             None => Ok(py.None()),
         }
     }
@@ -364,18 +364,24 @@ fn initialize_instance(
 ) -> PyResult<()> {
     let py = slf.py();
     let metadata = class_metadata(slf.as_any())?;
-    let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
-    if contains_python_keyword(&prepared_kwargs)? {
-        let keyword_func = keyword_check_target(slf.as_any())?;
-        check_keywords(&keyword_func, Some(&prepared_kwargs))?;
-    }
-    let (args, arg_names, kwargs, arguments) =
-        bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
+    let (args, arg_names, kwargs, arguments, original_kwargs) = if kwargs.is_none()
+        && matches!(metadata.kind, ComponentKind::Func | ComponentKind::Class)
+    {
+        let (args, arg_names, kwargs, arguments) =
+            bind_arguments_without_kwargs(py, &metadata.signature, args)?;
+        (args, arg_names, kwargs, arguments, Vec::new())
+    } else {
+        let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
+        if contains_python_keyword(&prepared_kwargs)? {
+            let keyword_func = keyword_check_target(slf.as_any())?;
+            check_keywords(&keyword_func, Some(&prepared_kwargs))?;
+        }
+        let (args, arg_names, kwargs, arguments) =
+            bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
 
-    let original_kwargs = PyDict::new(py);
-    for (key, value) in prepared_kwargs.iter() {
-        original_kwargs.set_item(key, value)?;
-    }
+        let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
+        (args, arg_names, kwargs, arguments, original_kwargs)
+    };
 
     let mut borrowed = slf.borrow_mut();
     borrowed.bound_args = None;
@@ -384,7 +390,7 @@ fn initialize_instance(
     borrowed.kwargs = kwargs;
     borrowed.arguments = arguments;
     borrowed.children.clear();
-    borrowed.original_kwargs = Some(original_kwargs.unbind());
+    borrowed.original_kwargs = Some(original_kwargs);
     borrowed.parent = None;
     borrowed.user_instance = None;
     borrowed.kind = metadata.kind;
@@ -641,6 +647,80 @@ type BoundState = (
     Vec<(String, Py<PyAny>)>,
     Vec<(String, Py<PyAny>)>,
 );
+
+fn bind_arguments_without_kwargs(
+    py: Python<'_>,
+    signature: &SignatureSpec,
+    args: &Bound<'_, PyTuple>,
+) -> PyResult<BoundState> {
+    let mut assigned: Vec<Option<Py<PyAny>>> = signature.params.iter().map(|_| None).collect();
+    let positional_indices: Vec<usize> = signature
+        .params
+        .iter()
+        .enumerate()
+        .filter_map(|(index, param)| {
+            matches!(param.kind, ParamKind::PosOnly | ParamKind::PosOrKw).then_some(index)
+        })
+        .collect();
+
+    if args.len() > positional_indices.len() {
+        return Err(PyTypeError::new_err("too many positional arguments"));
+    }
+
+    for (arg_index, value) in args.iter().enumerate() {
+        assigned[positional_indices[arg_index]] = Some(value.clone().unbind());
+    }
+
+    for (index, param) in signature.params.iter().enumerate() {
+        if param.kind == ParamKind::VarKw {
+            continue;
+        }
+
+        if assigned[index].is_none() {
+            if let Some(default) = &param.default {
+                assigned[index] = Some(default.clone_ref(py));
+            } else {
+                return Err(PyTypeError::new_err(format!(
+                    "missing a required argument: '{}'",
+                    param.name
+                )));
+            }
+        }
+    }
+
+    let mut bound_args = Vec::new();
+    let mut arg_names = Vec::new();
+    let mut bound_kwargs = Vec::new();
+    let mut arguments = Vec::new();
+
+    for (index, param) in signature.params.iter().enumerate() {
+        match param.kind {
+            ParamKind::PosOnly | ParamKind::PosOrKw => {
+                let value = assigned[index]
+                    .as_ref()
+                    .expect("positional argument must be assigned")
+                    .clone_ref(py);
+                bound_args.push(value.clone_ref(py));
+                arg_names.push(param.name.clone());
+                arguments.push((param.name.clone(), value));
+            }
+            ParamKind::KwOnly => {
+                let value = assigned[index]
+                    .as_ref()
+                    .expect("keyword-only argument must be assigned")
+                    .clone_ref(py);
+                bound_kwargs.push((param.name.clone(), value.clone_ref(py)));
+                arguments.push((param.name.clone(), value));
+            }
+            ParamKind::VarKw => {
+                let extras = PyDict::new(py);
+                arguments.push((param.name.clone(), extras.unbind().into_any()));
+            }
+        }
+    }
+
+    Ok((bound_args, arg_names, bound_kwargs, arguments))
+}
 
 fn bind_arguments_rust(
     py: Python<'_>,
@@ -1091,11 +1171,11 @@ fn render_element_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> 
             drop(borrowed);
             let attributes = render_attributes_from_pairs(py, &kwargs)?;
             let children = render_children_to_string(slf)?;
-            return Ok(format!("<{name}{attributes}>{children}</{name}>"));
+            return Ok(render_element_string(&name, &attributes, &children));
         }
     };
     let children = render_children_to_string(slf)?;
-    Ok(format!("<{name}{attributes}>{children}</{name}>"))
+    Ok(render_element_string(&name, &attributes, &children))
 }
 
 fn render_void_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
@@ -1110,10 +1190,32 @@ fn render_void_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
             let kwargs = clone_kwarg_vec(py, &borrowed.kwargs);
             drop(borrowed);
             let attributes = render_attributes_from_pairs(py, &kwargs)?;
-            return Ok(format!("<{name}{attributes} />"));
+            return Ok(render_void_string(&name, &attributes));
         }
     };
-    Ok(format!("<{name}{attributes} />"))
+    Ok(render_void_string(&name, &attributes))
+}
+
+fn render_element_string(name: &str, attributes: &str, children: &str) -> String {
+    let mut rendered = String::with_capacity(name.len() * 2 + attributes.len() + children.len() + 5);
+    rendered.push('<');
+    rendered.push_str(name);
+    rendered.push_str(attributes);
+    rendered.push('>');
+    rendered.push_str(children);
+    rendered.push_str("</");
+    rendered.push_str(name);
+    rendered.push('>');
+    rendered
+}
+
+fn render_void_string(name: &str, attributes: &str) -> String {
+    let mut rendered = String::with_capacity(name.len() + attributes.len() + 4);
+    rendered.push('<');
+    rendered.push_str(name);
+    rendered.push_str(attributes);
+    rendered.push_str(" />");
+    rendered
 }
 
 fn simple_attribute_values(py: Python<'_>, values: &[(String, Py<PyAny>)]) -> bool {
@@ -1482,7 +1584,7 @@ fn clone_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     target.original_kwargs = borrowed
         .original_kwargs
         .as_ref()
-        .map(|kwargs| kwargs.clone_ref(py));
+        .map(|kwargs| clone_kwarg_vec(py, kwargs));
     target.parent = None;
     target.user_instance = None;
     target.kind = borrowed.kind;
