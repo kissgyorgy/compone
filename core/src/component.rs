@@ -1,42 +1,43 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 
 use pyo3::exceptions::{PyAssertionError, PyAttributeError, PySyntaxError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::sync::GILOnceCell;
-use pyo3::types::{PyDict, PyIterator, PyList, PyTuple, PyType};
+use pyo3::types::{PyBool, PyDict, PyIterator, PyList, PyTuple, PyType};
 
 use crate::escape::{escape_value, safe_empty, safe_from_string};
 use crate::html::{attrs_to_dict, parse_html_class, render_attributes};
-use crate::utils::is_iterable_value;
+use crate::utils::{is_iterable_value, is_python_keyword};
 
-static LAST_PARENT: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
-
-pub fn init_context_var(py: Python<'_>) -> PyResult<()> {
-    let contextvars = py.import("contextvars")?;
-    let default = PyTuple::new(py, [py.None(), py.None()])?;
-    let var = contextvars
-        .getattr("ContextVar")?
-        .call1(("last_parent",))?;
-    var.call_method1("set", (default,))?;
-    let _ = LAST_PARENT.set(py, var.unbind());
-    Ok(())
+thread_local! {
+    static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
 }
 
-fn last_parent(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
-    LAST_PARENT
-        .get(py)
-        .map(|var| var.bind(py).clone())
-        .ok_or_else(|| PyAttributeError::new_err("last_parent is not initialized"))
+pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
+    PARENT_STACK.with(|stack| stack.borrow_mut().clear());
+    Ok(())
 }
 
 #[pyclass(name = "_ComponentBase", subclass)]
 pub struct RustComponent {
     bound_args: Option<Py<PyAny>>,
+    args: Vec<Py<PyAny>>,
+    arg_names: Vec<String>,
+    kwargs: Vec<(String, Py<PyAny>)>,
+    arguments: Vec<(String, Py<PyAny>)>,
     children: Vec<Py<PyAny>>,
     original_kwargs: Option<Py<PyDict>>,
-    parent_frame_id: Option<usize>,
     parent: Option<Py<PyAny>>,
     user_instance: Option<Py<PyAny>>,
+    kind: String,
+    name: String,
+    html: bool,
+    list_only: bool,
+    pass_children: bool,
+    var_keyword: Option<String>,
+    positional_args: HashSet<String>,
+    func: Option<Py<PyAny>>,
+    user_class: Option<Py<PyAny>>,
 }
 
 #[pymethods]
@@ -46,11 +47,23 @@ impl RustComponent {
     fn new(_args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>) -> Self {
         Self {
             bound_args: None,
+            args: Vec::new(),
+            arg_names: Vec::new(),
+            kwargs: Vec::new(),
+            arguments: Vec::new(),
             children: Vec::new(),
             original_kwargs: None,
-            parent_frame_id: None,
             parent: None,
             user_instance: None,
+            kind: String::new(),
+            name: String::new(),
+            html: false,
+            list_only: false,
+            pass_children: false,
+            var_keyword: None,
+            positional_args: HashSet::new(),
+            func: None,
+            user_class: None,
         }
     }
 
@@ -139,8 +152,7 @@ impl RustComponent {
                 &empty_kwargs
             }
         };
-        let func = slf.as_any().getattr("replace")?;
-        check_keywords(&func, Some(kwargs))?;
+        check_keywords_for_name(Some(kwargs), "compone", "replace")?;
         check_common_props(&slf, kwargs)?;
         make_new(&slf, kwargs)
     }
@@ -157,18 +169,16 @@ impl RustComponent {
             }
         };
         let kwargs = prepare_append_kwargs(slf.as_any(), kwargs)?;
-        let func = slf.as_any().getattr("append")?;
-        check_keywords(&func, Some(&kwargs))?;
+        check_keywords_for_name(Some(&kwargs), "compone", "append")?;
         check_common_props(&slf, &kwargs)?;
 
         let props = build_props_dict(&slf)?;
-        let operator = py.import("operator")?;
         let appended = PyDict::new(py);
         for (key, value) in kwargs.iter() {
             let old_value = props.get_item(&key)?.ok_or_else(|| {
                 PyTypeError::new_err("append expected an existing prop, but none was found")
             })?;
-            let new_value = operator.call_method1("add", (old_value, value))?;
+            let new_value = old_value.add(value)?;
             appended.set_item(key, new_value)?;
         }
         make_new(&slf, &appended)
@@ -183,32 +193,15 @@ impl RustComponent {
 
     fn __enter__(slf: Bound<'_, Self>) -> PyResult<Py<PyAny>> {
         let py = slf.py();
-        let value = last_parent(py)?.call_method0("get")?;
-        let pair = value.downcast::<PyTuple>()?;
-        let frame_obj = pair.get_item(0)?;
-        let parent_obj = pair.get_item(1)?;
-        let parent_frame_id = if frame_obj.is_none() {
-            None
-        } else {
-            Some(frame_obj.extract()?)
-        };
-        let parent = if parent_obj.is_none() {
-            None
-        } else {
-            Some(parent_obj.unbind())
-        };
-        let current_frame_id = current_frame_id(py)?;
-
-        {
-            let mut borrowed = slf.borrow_mut();
-            borrowed.parent_frame_id = parent_frame_id;
-            borrowed.parent = parent;
-        }
-
         let current = slf.as_any().clone().unbind();
-        let state = PyTuple::new(py, [current_frame_id.into_py(py), current])?;
-        last_parent(py)?.call_method1("set", (state,))?;
-        Ok(slf.as_any().clone().unbind())
+        let parent = PARENT_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            let parent = stack.last().map(|item| item.clone_ref(py));
+            stack.push(current.clone_ref(py));
+            parent
+        });
+        slf.borrow_mut().parent = parent;
+        Ok(current)
     }
 
     #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
@@ -219,28 +212,19 @@ impl RustComponent {
         _exc_tb: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let py = slf.py();
-        let current_frame_id = current_frame_id(py)?;
-        let (parent_frame_id, parent) = {
-            let borrowed = slf.borrow();
-            (
-                borrowed.parent_frame_id,
-                borrowed.parent.as_ref().map(|parent| parent.clone_ref(py)),
-            )
-        };
-
-        if let (Some(expected), Some(parent)) = (parent_frame_id, &parent) {
-            if expected == current_frame_id {
-                parent.bind(py).call_method1("__iadd__", (slf.as_any(),))?;
-            }
+        PARENT_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            let _ = stack.pop();
+        });
+        let parent = slf
+            .borrow()
+            .parent
+            .as_ref()
+            .map(|parent| parent.clone_ref(py));
+        if let Some(parent) = parent {
+            let parent = parent.bind(py).downcast::<RustComponent>()?;
+            parent.borrow_mut().children.push(slf.as_any().clone().unbind());
         }
-
-        let frame_obj = match parent_frame_id {
-            Some(frame_id) => frame_id.into_py(py),
-            None => py.None(),
-        };
-        let parent_obj = parent.unwrap_or_else(|| py.None());
-        let state = PyTuple::new(py, [frame_obj, parent_obj])?;
-        last_parent(py)?.call_method1("set", (state,))?;
         Ok(())
     }
 
@@ -252,7 +236,8 @@ impl RustComponent {
     #[classmethod]
     fn __class_getitem__(cls: &Bound<'_, PyType>, key: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let instance = cls.call0()?;
-        instance.call_method1("__getitem__", (key,)).map(Bound::unbind)
+        let instance = instance.downcast::<RustComponent>()?;
+        RustComponent::__getitem__(instance.clone(), key)
     }
 
     fn __getitem__(slf: Bound<'_, Self>, children: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
@@ -265,11 +250,8 @@ impl RustComponent {
         let child_items = children_from_value(children)?;
         validate_list_children(slf.as_any(), &child_items)?;
         let new = make_new_with_same_arguments(&slf)?;
-        let tuple = PyTuple::new(
-            slf.py(),
-            child_items.iter().map(|child| child.bind(slf.py()).clone()),
-        )?;
-        new.bind(slf.py()).call_method1("_replace_children", (tuple,))?;
+        let new_component = new.bind(slf.py()).downcast::<RustComponent>()?;
+        new_component.borrow_mut().children = child_items;
         Ok(new)
     }
 
@@ -311,20 +293,19 @@ impl RustComponent {
             return Ok(slf.py().NotImplemented());
         }
 
-        let kind = class_kind(slf.as_any())?;
-        let other_kind = class_kind(other)?;
-        let result = if kind == "void" && other_kind == "void" {
-            let self_name = class_string_attr(slf.as_any(), "_name")?;
-            let other_name = class_string_attr(other, "_name")?;
+        let other_component = other.downcast::<RustComponent>()?;
+        let result = if slf.borrow().kind == "void" && other_component.borrow().kind == "void" {
+            let self_name = slf.borrow().name.clone();
+            let other_name = other_component.borrow().name.clone();
             let self_kwargs = RustComponent::_original_kwargs(slf.clone())?
                 .bind(other.py())
                 .clone();
-            let other_kwargs = other.getattr("_original_kwargs")?;
-            self_name == other_name && self_kwargs.eq(&other_kwargs)?
+            let other_kwargs = RustComponent::_original_kwargs(other_component.clone())?;
+            self_name == other_name && self_kwargs.eq(other_kwargs.bind(other.py()))?
         } else {
             let self_str = render_instance(&slf)?;
-            let other_str = other.call_method0("__str__")?;
-            self_str.bind(other.py()).eq(&other_str)?
+            let other_str = render_instance(other_component)?;
+            self_str.bind(other.py()).eq(other_str.bind(other.py()))?
         };
         Ok(result.into_py(slf.py()))
     }
@@ -336,8 +317,7 @@ impl RustComponent {
         let count: isize = other.extract()?;
         let rendered = render_instance(&slf)?;
         let rendered = rendered.bind(slf.py());
-        let repeated = rendered.call_method1("__mul__", (count,))?;
-        Ok(repeated.unbind())
+        rendered.mul(count).map(Bound::unbind)
     }
 }
 
@@ -348,9 +328,13 @@ fn initialize_instance(
 ) -> PyResult<()> {
     let py = slf.py();
     let prepared_kwargs = prepare_init_kwargs(slf.as_any(), kwargs)?;
-    let keyword_func = keyword_check_target(slf.as_any())?;
-    check_keywords(&keyword_func, Some(&prepared_kwargs))?;
-    let bound_args = bind_args(slf.as_any(), args, Some(&prepared_kwargs))?;
+    if contains_python_keyword(&prepared_kwargs)? {
+        let keyword_func = keyword_check_target(slf.as_any())?;
+        check_keywords(&keyword_func, Some(&prepared_kwargs))?;
+    }
+    let metadata = InstanceMetadata::from_class(slf.as_any())?;
+    let (args, arg_names, kwargs, arguments) =
+        bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
 
     let original_kwargs = PyDict::new(py);
     for (key, value) in prepared_kwargs.iter() {
@@ -358,12 +342,24 @@ fn initialize_instance(
     }
 
     let mut borrowed = slf.borrow_mut();
-    borrowed.bound_args = Some(bound_args.unbind());
+    borrowed.bound_args = None;
+    borrowed.args = args;
+    borrowed.arg_names = arg_names;
+    borrowed.kwargs = kwargs;
+    borrowed.arguments = arguments;
     borrowed.children.clear();
     borrowed.original_kwargs = Some(original_kwargs.unbind());
-    borrowed.parent_frame_id = None;
     borrowed.parent = None;
     borrowed.user_instance = None;
+    borrowed.kind = metadata.kind;
+    borrowed.name = metadata.name;
+    borrowed.html = metadata.html;
+    borrowed.list_only = metadata.list_only;
+    borrowed.pass_children = metadata.pass_children;
+    borrowed.var_keyword = metadata.var_keyword;
+    borrowed.positional_args = metadata.positional_args.into_iter().collect();
+    borrowed.func = metadata.func;
+    borrowed.user_class = metadata.user_class;
     Ok(())
 }
 
@@ -407,6 +403,296 @@ fn prepare_append_kwargs<'py>(
     Ok(prepared)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ParamKind {
+    PosOnly,
+    PosOrKw,
+    KwOnly,
+    VarKw,
+}
+
+struct ParamSpec {
+    name: String,
+    kind: ParamKind,
+    default: Option<Py<PyAny>>,
+}
+
+struct SignatureSpec {
+    params: Vec<ParamSpec>,
+    positional_args: Vec<String>,
+    var_keyword: Option<String>,
+}
+
+struct InstanceMetadata {
+    kind: String,
+    name: String,
+    html: bool,
+    list_only: bool,
+    pass_children: bool,
+    var_keyword: Option<String>,
+    positional_args: Vec<String>,
+    signature: SignatureSpec,
+    func: Option<Py<PyAny>>,
+    user_class: Option<Py<PyAny>>,
+}
+
+impl SignatureSpec {
+    fn from_class(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let py = obj.py();
+        let cls = obj.get_type();
+        let specs = cls.getattr("_param_specs")?;
+        let mut params = Vec::new();
+        let mut positional_args = Vec::new();
+        let mut var_keyword = None;
+        for item in specs.try_iter()? {
+            let item = item?;
+            let item = item.downcast::<PyTuple>()?;
+            let name: String = item.get_item(0)?.extract()?;
+            let kind_code: u8 = item.get_item(1)?.extract()?;
+            let has_default: bool = item.get_item(2)?.extract()?;
+            let default = if has_default {
+                Some(item.get_item(3)?.clone().unbind())
+            } else {
+                None
+            };
+            let kind = match kind_code {
+                0 => ParamKind::PosOnly,
+                1 => ParamKind::PosOrKw,
+                2 => ParamKind::KwOnly,
+                _ => ParamKind::VarKw,
+            };
+            if matches!(kind, ParamKind::PosOnly | ParamKind::PosOrKw) {
+                positional_args.push(name.clone());
+            }
+            if kind == ParamKind::VarKw {
+                var_keyword = Some(name.clone());
+            }
+            params.push(ParamSpec {
+                name,
+                kind,
+                default: default.map(|default| default.clone_ref(py)),
+            });
+        }
+        Ok(Self {
+            params,
+            positional_args,
+            var_keyword,
+        })
+    }
+}
+
+impl InstanceMetadata {
+    fn from_class(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let cls = obj.get_type();
+        let kind: String = cls.getattr("_kind")?.extract()?;
+        let name = match cls.getattr("_name") {
+            Ok(name) if !name.is_none() => name.extract()?,
+            _ => String::new(),
+        };
+        let html = match cls.getattr("_html") {
+            Ok(value) => value.extract()?,
+            Err(_) => false,
+        };
+        let list_only = match cls.getattr("_list_only") {
+            Ok(value) => value.extract()?,
+            Err(_) => false,
+        };
+        let pass_children = match cls.getattr("_pass_children") {
+            Ok(value) => value.extract()?,
+            Err(_) => false,
+        };
+        let var_keyword = match cls.getattr("_var_keyword") {
+            Ok(value) if !value.is_none() => Some(value.extract()?),
+            _ => None,
+        };
+        let signature = SignatureSpec::from_class(obj)?;
+        let positional_args = signature.positional_args.clone();
+        let func = match cls.getattr("_func") {
+            Ok(value) if !value.is_none() => Some(value.unbind()),
+            _ => None,
+        };
+        let user_class = match cls.getattr("_user_class") {
+            Ok(value) if !value.is_none() => Some(value.unbind()),
+            _ => None,
+        };
+        Ok(Self {
+            kind,
+            name,
+            html,
+            list_only,
+            pass_children,
+            var_keyword,
+            positional_args,
+            signature,
+            func,
+            user_class,
+        })
+    }
+}
+
+fn extract_string_dict_items(dict: &Bound<'_, PyDict>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+    let mut items = Vec::with_capacity(dict.len());
+    for (key, value) in dict.iter() {
+        items.push((key.extract()?, value.clone().unbind()));
+    }
+    Ok(items)
+}
+
+type BoundState = (
+    Vec<Py<PyAny>>,
+    Vec<String>,
+    Vec<(String, Py<PyAny>)>,
+    Vec<(String, Py<PyAny>)>,
+);
+
+fn bind_arguments_rust(
+    py: Python<'_>,
+    signature: &SignatureSpec,
+    args: &Bound<'_, PyTuple>,
+    kwargs: &Bound<'_, PyDict>,
+) -> PyResult<BoundState> {
+    let mut remaining = extract_string_dict_items(kwargs)?;
+    let mut assigned: Vec<Option<Py<PyAny>>> = signature.params.iter().map(|_| None).collect();
+    let positional_indices: Vec<usize> = signature
+        .params
+        .iter()
+        .enumerate()
+        .filter_map(|(index, param)| {
+            matches!(param.kind, ParamKind::PosOnly | ParamKind::PosOrKw).then_some(index)
+        })
+        .collect();
+
+    if args.len() > positional_indices.len() {
+        return Err(PyTypeError::new_err("too many positional arguments"));
+    }
+
+    for (arg_index, value) in args.iter().enumerate() {
+        assigned[positional_indices[arg_index]] = Some(value.clone().unbind());
+    }
+
+    for (index, param) in signature.params.iter().enumerate() {
+        if param.kind == ParamKind::VarKw {
+            continue;
+        }
+
+        if param.kind != ParamKind::PosOnly {
+            if let Some(position) = remaining.iter().position(|(key, _)| key == &param.name) {
+                if assigned[index].is_some() {
+                    return Err(PyTypeError::new_err(format!(
+                        "multiple values for argument '{}'",
+                        param.name
+                    )));
+                }
+                assigned[index] = Some(remaining.remove(position).1);
+            }
+        }
+
+        if assigned[index].is_none() {
+            if let Some(default) = &param.default {
+                assigned[index] = Some(default.clone_ref(py));
+            } else {
+                return Err(PyTypeError::new_err(format!(
+                    "missing a required argument: '{}'",
+                    param.name
+                )));
+            }
+        }
+    }
+
+    if signature.var_keyword.is_none() && !remaining.is_empty() {
+        return Err(PyTypeError::new_err(format!(
+            "got an unexpected keyword argument '{}'",
+            remaining[0].0
+        )));
+    }
+
+    let mut bound_args = Vec::new();
+    let mut arg_names = Vec::new();
+    let mut bound_kwargs = Vec::new();
+    let mut arguments = Vec::new();
+
+    for (index, param) in signature.params.iter().enumerate() {
+        match param.kind {
+            ParamKind::PosOnly | ParamKind::PosOrKw => {
+                let value = assigned[index]
+                    .as_ref()
+                    .expect("positional argument must be assigned")
+                    .clone_ref(py);
+                bound_args.push(value.clone_ref(py));
+                arg_names.push(param.name.clone());
+                arguments.push((param.name.clone(), value));
+            }
+            ParamKind::KwOnly => {
+                let value = assigned[index]
+                    .as_ref()
+                    .expect("keyword-only argument must be assigned")
+                    .clone_ref(py);
+                bound_kwargs.push((param.name.clone(), value.clone_ref(py)));
+                arguments.push((param.name.clone(), value));
+            }
+            ParamKind::VarKw => {
+                let extras = PyDict::new(py);
+                for (key, value) in &remaining {
+                    extras.set_item(key, value.bind(py))?;
+                    bound_kwargs.push((key.clone(), value.clone_ref(py)));
+                }
+                arguments.push((param.name.clone(), extras.unbind().into_any()));
+            }
+        }
+    }
+
+    Ok((bound_args, arg_names, bound_kwargs, arguments))
+}
+
+fn clone_py_vec(py: Python<'_>, values: &[Py<PyAny>]) -> Vec<Py<PyAny>> {
+    values.iter().map(|value| value.clone_ref(py)).collect()
+}
+
+fn clone_kwarg_vec(py: Python<'_>, values: &[(String, Py<PyAny>)]) -> Vec<(String, Py<PyAny>)> {
+    values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone_ref(py)))
+        .collect()
+}
+
+fn copy_py_vec(
+    py: Python<'_>,
+    copy_module: &Bound<'_, PyModule>,
+    values: &[Py<PyAny>],
+) -> PyResult<Vec<Py<PyAny>>> {
+    values
+        .iter()
+        .map(|value| copy_module.call_method1("copy", (value.bind(py),)).map(Bound::unbind))
+        .collect()
+}
+
+fn copy_kwarg_vec(
+    py: Python<'_>,
+    copy_module: &Bound<'_, PyModule>,
+    values: &[(String, Py<PyAny>)],
+) -> PyResult<Vec<(String, Py<PyAny>)>> {
+    values
+        .iter()
+        .map(|(key, value)| {
+            Ok((
+                key.clone(),
+                copy_module.call_method1("copy", (value.bind(py),))?.unbind(),
+            ))
+        })
+        .collect()
+}
+
+fn dict_from_string_items<'py>(
+    py: Python<'py>,
+    values: &[(String, Py<PyAny>)],
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    for (key, value) in values {
+        dict.set_item(key, value.bind(py))?;
+    }
+    Ok(dict)
+}
+
 fn keyword_check_target<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     let cls = obj.get_type();
     match class_kind(obj)?.as_str() {
@@ -418,7 +704,7 @@ fn keyword_check_target<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyA
 
 fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let kind = class_kind(slf.as_any())?;
+    let kind = { slf.borrow().kind.clone() };
     match kind.as_str() {
         "void" => render_void(slf),
         "element" => render_element(slf),
@@ -442,7 +728,7 @@ fn render_children(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 }
 
 fn render_element(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
-    let name = class_string_attr(slf.as_any(), "_name")?;
+    let name = slf.borrow().name.clone();
     let props = build_props_dict(slf)?;
     let attributes = render_attributes(&props)?;
     let children = render_children(slf)?;
@@ -456,7 +742,7 @@ fn render_element(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 }
 
 fn render_void(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
-    let name = class_string_attr(slf.as_any(), "_name")?;
+    let name = slf.borrow().name.clone();
     let props = build_props_dict(slf)?;
     let attributes = render_attributes(&props)?;
     safe_from_string(slf.py(), format!("<{name}{attributes} />"))
@@ -464,29 +750,29 @@ fn render_void(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
 fn render_func_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let cls = slf.as_any().get_type();
-    let func = cls.getattr("_func")?;
-    let pass_children = class_bool_attr(slf.as_any(), "_pass_children")?;
-    let bound_args_obj = get_bound_args_object(slf)?;
-    let bound_args = bound_args_obj.bind(py);
-    let args = bound_args.getattr("args")?;
-    let args = args.downcast::<PyTuple>()?;
-    let kwargs = bound_args.getattr("kwargs")?;
-    let kwargs = kwargs.downcast::<PyDict>()?;
-    let call_kwargs = PyDict::new(py);
-    for (key, value) in kwargs.iter() {
-        call_kwargs.set_item(key, value)?;
-    }
+    let (func, pass_children, args, kwargs) = {
+        let borrowed = slf.borrow();
+        (
+            borrowed.func.as_ref().map(|func| func.clone_ref(py)).ok_or_else(|| {
+                PyAttributeError::new_err("function component has no callable")
+            })?,
+            borrowed.pass_children,
+            clone_py_vec(py, &borrowed.args),
+            clone_kwarg_vec(py, &borrowed.kwargs),
+        )
+    };
+    let args = PyTuple::new(py, args)?;
+    let call_kwargs = dict_from_string_items(py, &kwargs)?;
     if pass_children {
         call_kwargs.set_item("children", render_children(slf)?)?;
     }
-    let content = func.call(args, Some(&call_kwargs))?;
+    let content = func.bind(py).call(&args, Some(&call_kwargs))?;
     escape_value(&content)
 }
 
 fn render_class_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let pass_children = class_bool_attr(slf.as_any(), "_pass_children")?;
+    let pass_children = { slf.borrow().pass_children };
     let user_instance = get_or_create_user_instance(slf)?;
     let content = if pass_children {
         user_instance
@@ -509,25 +795,35 @@ fn render_comment(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
 fn get_or_create_user_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    if let Some(instance) = &slf.borrow().user_instance {
-        return Ok(instance.clone_ref(py));
+    {
+        let borrowed = slf.borrow();
+        if let Some(instance) = &borrowed.user_instance {
+            return Ok(instance.clone_ref(py));
+        }
     }
 
-    let cls = slf.as_any().get_type();
-    let user_class = cls.getattr("_user_class")?;
-    let bound_args_obj = get_bound_args_object(slf)?;
-    let bound_args = bound_args_obj.bind(py);
-    let args = bound_args.getattr("args")?;
-    let args = args.downcast::<PyTuple>()?;
-    let kwargs = bound_args.getattr("kwargs")?;
-    let kwargs = kwargs.downcast::<PyDict>()?;
-    let instance = user_class.call(args, Some(kwargs))?.unbind();
+    let (user_class, args, kwargs) = {
+        let borrowed = slf.borrow();
+        (
+            borrowed
+                .user_class
+                .as_ref()
+                .map(|user_class| user_class.clone_ref(py))
+                .ok_or_else(|| PyAttributeError::new_err("class component has no class"))?,
+            clone_py_vec(py, &borrowed.args),
+            clone_kwarg_vec(py, &borrowed.kwargs),
+        )
+    };
+    let args = PyTuple::new(py, args)?;
+    let kwargs = dict_from_string_items(py, &kwargs)?;
+    let instance = user_class.bind(py).call(&args, Some(&kwargs))?.unbind();
     slf.borrow_mut().user_instance = Some(instance.clone_ref(py));
     Ok(instance)
 }
 
 fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyResult<()> {
-    if !class_bool_attr(obj, "_list_only")? {
+    let list_only = obj.downcast::<RustComponent>()?.borrow().list_only;
+    if !list_only {
         return Ok(());
     }
 
@@ -554,23 +850,27 @@ fn children_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Py<PyAny>>> {
     Ok(children)
 }
 
-fn current_frame_id(py: Python<'_>) -> PyResult<usize> {
-    let sys = py.import("sys")?;
-    let builtins = py.import("builtins")?;
-    let frame = sys.call_method1("_getframe", (0,))?;
-    builtins.getattr("id")?.call1((frame,))?.extract()
-}
-
 pub fn get_bound_args_object(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let borrowed = slf.borrow();
-    borrowed
-        .bound_args
-        .as_ref()
-        .map(|obj| obj.clone_ref(py))
-        .ok_or_else(|| {
-            PyAttributeError::new_err("'_ComponentBase' object has no attribute '_bound_args'")
-        })
+    {
+        let borrowed = slf.borrow();
+        if let Some(bound_args) = &borrowed.bound_args {
+            return Ok(bound_args.clone_ref(py));
+        }
+    }
+
+    let (args, kwargs) = {
+        let borrowed = slf.borrow();
+        (
+            clone_py_vec(py, &borrowed.args),
+            clone_kwarg_vec(py, &borrowed.kwargs),
+        )
+    };
+    let args = PyTuple::new(py, args)?;
+    let kwargs = dict_from_string_items(py, &kwargs)?;
+    let bound_args = bind_args(slf.as_any(), &args, Some(&kwargs))?.unbind();
+    slf.borrow_mut().bound_args = Some(bound_args.clone_ref(py));
+    Ok(bound_args)
 }
 
 fn bind_args<'py>(
@@ -584,7 +884,36 @@ fn bind_args<'py>(
     Ok(bound)
 }
 
+fn contains_python_keyword(kwargs: &Bound<'_, PyDict>) -> PyResult<bool> {
+    for key in kwargs.keys() {
+        let name: String = key.extract()?;
+        if is_python_keyword(&name) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub fn check_keywords(func: &Bound<'_, PyAny>, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
+    let func_name = match func.getattr("__qualname__") {
+        Ok(value) if !value.is_none() => value.extract()?,
+        _ => match func.getattr("__name__") {
+            Ok(value) if !value.is_none() => value.extract()?,
+            _ => String::from("<unknown>"),
+        },
+    };
+    let module_name = match func.getattr("__module__") {
+        Ok(value) if !value.is_none() => value.extract()?,
+        _ => String::from("compone"),
+    };
+    check_keywords_for_name(kwargs, &module_name, &func_name)
+}
+
+fn check_keywords_for_name(
+    kwargs: Option<&Bound<'_, PyDict>>,
+    module_name: &str,
+    func_name: &str,
+) -> PyResult<()> {
     let Some(kwargs) = kwargs else {
         return Ok(());
     };
@@ -592,25 +921,9 @@ pub fn check_keywords(func: &Bound<'_, PyAny>, kwargs: Option<&Bound<'_, PyDict>
         return Ok(());
     }
 
-    let py = kwargs.py();
-    let keyword = py.import("keyword")?;
-    let is_keyword = keyword.getattr("iskeyword")?;
-
     for key in kwargs.keys() {
         let name: String = key.extract()?;
-        let keyword_result: bool = is_keyword.call1((&name,))?.extract()?;
-        if keyword_result {
-            let func_name = match func.getattr("__qualname__") {
-                Ok(value) if !value.is_none() => value.extract()?,
-                _ => match func.getattr("__name__") {
-                    Ok(value) if !value.is_none() => value.extract()?,
-                    _ => String::from("<unknown>"),
-                },
-            };
-            let module_name = match func.getattr("__module__") {
-                Ok(value) if !value.is_none() => value.extract()?,
-                _ => String::from("compone"),
-            };
+        if is_python_keyword(&name) {
             return Err(PySyntaxError::new_err(format!(
                 "keyword: {name:?} cannot be used as argument name in {module_name}.{func_name}, use an underscore at the end instead"
             )));
@@ -622,40 +935,29 @@ pub fn check_keywords(func: &Bound<'_, PyAny>, kwargs: Option<&Bound<'_, PyDict>
 
 pub fn build_props_dict<'py>(slf: &Bound<'py, RustComponent>) -> PyResult<Bound<'py, PyDict>> {
     let py = slf.py();
-    let bound_args_obj = get_bound_args_object(slf)?;
-    let bound_args = bound_args_obj.bind(py);
-    let bound_kwargs = bound_args.getattr("kwargs")?;
-    let bound_kwargs = bound_kwargs.downcast::<PyDict>()?;
-    let bound_arguments = bound_args.getattr("arguments")?;
-    let bound_arguments = bound_arguments.downcast::<PyDict>()?;
-
-    let kwargs = PyDict::new(py);
-    for (key, value) in bound_kwargs.iter() {
-        if !value.is_none() {
-            kwargs.set_item(key, value)?;
-        }
-    }
-
-    let args = PyDict::new(py);
-    for (key, value) in bound_arguments.iter() {
-        if !kwargs.contains(&key)? && !value.is_none() {
-            args.set_item(key, value)?;
-        }
-    }
-
-    let var_keyword = class_optional_string_attr(slf.as_any(), "_var_keyword")?;
-    if let Some(var_keyword) = var_keyword {
-        if args.contains(&var_keyword)? {
-            args.del_item(var_keyword)?;
-        }
-    }
-
     let props = PyDict::new(py);
-    for (key, value) in args.iter() {
-        props.set_item(key, value)?;
+    let borrowed = slf.borrow();
+    let kwargs_keys: HashSet<&str> = borrowed
+        .kwargs
+        .iter()
+        .filter(|(_, value)| !value.bind(py).is_none())
+        .map(|(key, _)| key.as_str())
+        .collect();
+
+    for (key, value) in &borrowed.arguments {
+        if borrowed.var_keyword.as_deref() == Some(key.as_str()) {
+            continue;
+        }
+        if kwargs_keys.contains(key.as_str()) || value.bind(py).is_none() {
+            continue;
+        }
+        props.set_item(key, value.bind(py))?;
     }
-    for (key, value) in kwargs.iter() {
-        props.set_item(key, value)?;
+
+    for (key, value) in &borrowed.kwargs {
+        if !value.bind(py).is_none() {
+            props.set_item(key, value.bind(py))?;
+        }
     }
     Ok(props)
 }
@@ -688,101 +990,49 @@ fn check_common_props(slf: &Bound<'_, RustComponent>, kwargs: &Bound<'_, PyDict>
 fn make_new(slf: &Bound<'_, RustComponent>, new_arguments: &Bound<'_, PyDict>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
     let copy_module = py.import("copy")?;
-    let inspect = py.import("inspect")?;
-    let sig = slf.as_any().get_type().getattr("_sig")?;
-    let bound_args_obj = get_bound_args_object(slf)?;
-    let bound_args = bound_args_obj.bind(py);
-    let original_arguments = bound_args.getattr("arguments")?;
-    let original_arguments = original_arguments.downcast::<PyDict>()?;
+    let (mut args, arg_names, mut kwargs, positional_args) = {
+        let borrowed = slf.borrow();
+        (
+            copy_py_vec(py, &copy_module, &borrowed.args)?,
+            borrowed.arg_names.clone(),
+            copy_kwarg_vec(py, &copy_module, &borrowed.kwargs)?,
+            borrowed.positional_args.clone(),
+        )
+    };
 
-    let arguments_copy = PyDict::new(py);
-    for (key, value) in original_arguments.iter() {
-        let copied = copy_module.call_method1("copy", (value,))?;
-        arguments_copy.set_item(key, copied)?;
-    }
-
-    let bound_arguments_cls = inspect.getattr("BoundArguments")?;
-    let bound_copy = bound_arguments_cls.call1((sig, arguments_copy))?;
-    let bound_copy_arguments = bound_copy.getattr("arguments")?;
-    let bound_copy_arguments = bound_copy_arguments.downcast::<PyDict>()?;
-
-    let var_keyword = class_optional_string_attr(slf.as_any(), "_var_keyword")?;
-    if let Some(var_keyword) = var_keyword {
-        let old_star_arguments = bound_copy_arguments.get_item(&var_keyword)?.ok_or_else(|| {
-            PyAttributeError::new_err(format!(
-                "Bound arguments have no variable keyword entry {var_keyword:?}"
-            ))
-        })?;
-        let old_star_arguments = old_star_arguments.downcast::<PyDict>()?;
-        let new_star_arguments = PyDict::new(py);
-        for (key, value) in new_arguments.iter() {
-            if old_star_arguments.contains(&key)? {
-                new_star_arguments.set_item(key, value)?;
-            }
-        }
-        old_star_arguments.call_method1("update", (&new_star_arguments,))?;
-
-        let other_arguments = PyDict::new(py);
-        for (key, value) in new_arguments.iter() {
-            if !new_star_arguments.contains(&key)? {
-                other_arguments.set_item(key, value)?;
-            }
-        }
-        bound_copy_arguments.call_method1("update", (&other_arguments,))?;
-    } else {
-        bound_copy_arguments.call_method1("update", (new_arguments,))?;
-    }
-
-    let bound_copy_kwargs = bound_copy.getattr("kwargs")?;
-    let bound_copy_kwargs = bound_copy_kwargs.downcast::<PyDict>()?;
-    let positional_args = get_positional_args(slf.as_any())?;
-    let extra_kwargs = PyDict::new(py);
     for (key, value) in new_arguments.iter() {
-        let key_string: String = key.extract()?;
-        if !bound_copy_kwargs.contains(&key)? && !positional_args.contains(&key_string) {
-            extra_kwargs.set_item(key, value)?;
+        let key: String = key.extract()?;
+        let mut handled = false;
+        if let Some(index) = arg_names.iter().position(|name| name == &key) {
+            args[index] = value.clone().unbind();
+            handled = true;
+        }
+        if let Some((_, existing)) = kwargs.iter_mut().find(|(name, _)| name == &key) {
+            *existing = value.clone().unbind();
+            handled = true;
+        }
+        if !handled && !positional_args.contains(&key) {
+            kwargs.push((key, value.clone().unbind()));
         }
     }
 
-    let new_kwargs = PyDict::new(py);
-    for (key, value) in bound_copy_kwargs.iter() {
-        new_kwargs.set_item(key, value)?;
-    }
-    for (key, value) in extra_kwargs.iter() {
-        new_kwargs.set_item(key, value)?;
-    }
-
-    let bound_copy_args = bound_copy.getattr("args")?;
-    let bound_copy_args = bound_copy_args.downcast::<PyTuple>()?;
-    let new_bound = bind_args(slf.as_any(), bound_copy_args, Some(&new_kwargs))?;
-    let new_bound_args = new_bound.getattr("args")?;
-    let new_bound_args = new_bound_args.downcast::<PyTuple>()?;
-    let new_bound_kwargs = new_bound.getattr("kwargs")?;
-    let new_bound_kwargs = new_bound_kwargs.downcast::<PyDict>()?;
-
-    let cls = slf.as_any().get_type();
-    let new_instance = cls.call(new_bound_args, Some(new_bound_kwargs))?;
-    Ok(new_instance.unbind())
+    let args = PyTuple::new(py, args.iter().map(|arg| arg.bind(py).clone()))?;
+    let kwargs = dict_from_string_items(py, &kwargs)?;
+    slf.as_any().get_type().call(&args, Some(&kwargs)).map(Bound::unbind)
 }
 
 fn make_new_with_same_arguments(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let bound_args_obj = get_bound_args_object(slf)?;
-    let bound_args = bound_args_obj.bind(py);
-    let args = bound_args.getattr("args")?;
-    let args = args.downcast::<PyTuple>()?;
-    let kwargs = bound_args.getattr("kwargs")?;
-    let kwargs = kwargs.downcast::<PyDict>()?;
-    slf.as_any().get_type().call(args, Some(kwargs)).map(Bound::unbind)
-}
-
-fn get_positional_args(obj: &Bound<'_, PyAny>) -> PyResult<HashSet<String>> {
-    let attr = obj.get_type().getattr("_positional_args")?;
-    let mut positional = HashSet::new();
-    for item in attr.try_iter()? {
-        positional.insert(item?.extract()?);
-    }
-    Ok(positional)
+    let (args, kwargs) = {
+        let borrowed = slf.borrow();
+        (
+            clone_py_vec(py, &borrowed.args),
+            clone_kwarg_vec(py, &borrowed.kwargs),
+        )
+    };
+    let args = PyTuple::new(py, args)?;
+    let kwargs = dict_from_string_items(py, &kwargs)?;
+    slf.as_any().get_type().call(&args, Some(&kwargs)).map(Bound::unbind)
 }
 
 pub fn class_kind(obj: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -791,15 +1041,6 @@ pub fn class_kind(obj: &Bound<'_, PyAny>) -> PyResult<String> {
 
 pub fn class_string_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<String> {
     obj.get_type().getattr(attr)?.extract()
-}
-
-pub fn class_optional_string_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Option<String>> {
-    let value = obj.get_type().getattr(attr)?;
-    if value.is_none() {
-        Ok(None)
-    } else {
-        Ok(Some(value.extract()?))
-    }
 }
 
 pub fn class_bool_attr(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<bool> {
@@ -825,6 +1066,21 @@ pub fn empty_signature(py: Python<'_>) -> PyResult<Py<PyAny>> {
     let param = parameter_cls.call1(("kwargs", var_keyword))?;
     let params = PyList::new(py, [param])?;
     inspect.getattr("Signature")?.call1((params,)).map(Bound::unbind)
+}
+
+pub fn empty_param_specs(py: Python<'_>) -> PyResult<Py<PyAny>> {
+    let specs = PyList::empty(py);
+    let spec = PyTuple::new(
+        py,
+        [
+            "kwargs".into_pyobject(py)?.into_any().unbind(),
+            3_u8.into_pyobject(py)?.into_any().unbind(),
+            PyBool::new(py, false).to_owned().into_any().unbind(),
+            py.None(),
+        ],
+    )?;
+    specs.append(spec)?;
+    Ok(specs.unbind().into_any())
 }
 
 pub fn make_dynamic_class(
@@ -870,11 +1126,16 @@ fn make_func_component(func: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         |name| name != "children",
         true,
     )?;
-    let sig = py.import("inspect")?.getattr("Signature")?.call1((parameters,))?;
+    let param_specs = build_param_specs(parameters.bind(py))?;
+    let sig = py
+        .import("inspect")?
+        .getattr("Signature")?
+        .call1((parameters.bind(py),))?;
     let attrs = PyDict::new(py);
     attrs.set_item("_kind", "func")?;
     attrs.set_item("_func", func)?;
     attrs.set_item("_sig", sig)?;
+    attrs.set_item("_param_specs", param_specs)?;
     attrs.set_item("_positional_args", positional_args)?;
     attrs.set_item("_var_keyword", var_keyword)?;
     attrs.set_item("_pass_children", pass_children)?;
@@ -899,7 +1160,11 @@ fn make_class_component(user_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         |name| name != "self" && name != "children",
         false,
     )?;
-    let sig = py.import("inspect")?.getattr("Signature")?.call1((parameters,))?;
+    let param_specs = build_param_specs(parameters.bind(py))?;
+    let sig = py
+        .import("inspect")?
+        .getattr("Signature")?
+        .call1((parameters.bind(py),))?;
     let render = user_class.getattr("render")?;
     let render_sig = py.import("inspect")?.getattr("signature")?.call1((&render,))?;
     let pass_children = signature_has_parameter(&render_sig, "children")?;
@@ -908,6 +1173,7 @@ fn make_class_component(user_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     attrs.set_item("_user_class", user_class)?;
     attrs.set_item("_render_func", render)?;
     attrs.set_item("_sig", sig)?;
+    attrs.set_item("_param_specs", param_specs)?;
     attrs.set_item("_positional_args", positional_args)?;
     attrs.set_item("_var_keyword", var_keyword)?;
     attrs.set_item("_pass_children", pass_children)?;
@@ -975,6 +1241,48 @@ where
         }
     }
     Ok((parameters.unbind().into_any(), pass_children, var_keyword))
+}
+
+fn build_param_specs(parameters: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    let py = parameters.py();
+    let parameter_cls = py.import("inspect")?.getattr("Parameter")?;
+    let pos_only = parameter_cls.getattr("POSITIONAL_ONLY")?;
+    let pos_or_kw = parameter_cls.getattr("POSITIONAL_OR_KEYWORD")?;
+    let kw_only = parameter_cls.getattr("KEYWORD_ONLY")?;
+    let var_kw = parameter_cls.getattr("VAR_KEYWORD")?;
+    let empty = parameter_cls.getattr("empty")?;
+    let specs = PyList::empty(py);
+
+    for param in parameters.try_iter()? {
+        let param = param?;
+        let name: String = param.getattr("name")?.extract()?;
+        let kind = param.getattr("kind")?;
+        let kind_code = if kind.eq(&pos_only)? {
+            0_u8
+        } else if kind.eq(&pos_or_kw)? {
+            1_u8
+        } else if kind.eq(&kw_only)? {
+            2_u8
+        } else if kind.eq(&var_kw)? {
+            3_u8
+        } else {
+            continue;
+        };
+        let default = param.getattr("default")?;
+        let has_default = !default.eq(&empty)?;
+        let spec = PyTuple::new(
+            py,
+            [
+                name.into_pyobject(py)?.into_any().unbind(),
+                kind_code.into_pyobject(py)?.into_any().unbind(),
+                PyBool::new(py, has_default).to_owned().into_any().unbind(),
+                default.unbind(),
+            ],
+        )?;
+        specs.append(spec)?;
+    }
+
+    Ok(specs.unbind().into_any())
 }
 
 fn signature_has_parameter(sig: &Bound<'_, PyAny>, name: &str) -> PyResult<bool> {

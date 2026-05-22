@@ -1,20 +1,55 @@
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyIterator};
+use pyo3::types::{PyBool, PyDict, PyIterator, PyString};
 use std::collections::HashSet;
 
 pub fn is_python_str(value: &Bound<'_, PyAny>) -> PyResult<bool> {
-    let py = value.py();
-    let builtins = py.import("builtins")?;
-    let str_type = builtins.getattr("str")?;
-    value.is_instance(&str_type)
+    Ok(value.downcast::<PyString>().is_ok())
 }
 
 pub fn is_python_bool(value: &Bound<'_, PyAny>) -> PyResult<bool> {
-    let py = value.py();
-    let builtins = py.import("builtins")?;
-    let bool_type = builtins.getattr("bool")?;
-    value.is_instance(&bool_type)
+    Ok(value.downcast::<PyBool>().is_ok())
+}
+
+pub fn is_python_keyword(value: &str) -> bool {
+    matches!(
+        value,
+        "False"
+            | "None"
+            | "True"
+            | "and"
+            | "as"
+            | "assert"
+            | "async"
+            | "await"
+            | "break"
+            | "class"
+            | "continue"
+            | "def"
+            | "del"
+            | "elif"
+            | "else"
+            | "except"
+            | "finally"
+            | "for"
+            | "from"
+            | "global"
+            | "if"
+            | "import"
+            | "in"
+            | "is"
+            | "lambda"
+            | "nonlocal"
+            | "not"
+            | "or"
+            | "pass"
+            | "raise"
+            | "return"
+            | "try"
+            | "while"
+            | "with"
+            | "yield"
+    )
 }
 
 #[pyfunction]

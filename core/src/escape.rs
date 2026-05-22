@@ -1,12 +1,12 @@
 use pyo3::exceptions::{PyAttributeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::GILOnceCell;
-use pyo3::types::PyIterator;
-use pyo3::intern;
+use pyo3::types::{PyIterator, PyString, PyType};
 
 use crate::utils::is_iterable_value;
 
 static SAFE_CLASS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
+static MARKUP_CLASS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
 
 pub fn set_safe_class(py: Python<'_>, safe_class: Py<PyAny>) -> PyResult<()> {
     let _ = SAFE_CLASS.set(py, safe_class);
@@ -23,6 +23,7 @@ pub fn safe_class(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
 pub fn make_safe_class(py: Python<'_>) -> PyResult<Py<PyAny>> {
     let markupsafe = py.import("markupsafe")?;
     let markup = markupsafe.getattr("Markup")?;
+    let _ = MARKUP_CLASS.set(py, markup.clone().unbind());
     let builtins = py.import("builtins")?;
     let type_ = builtins.getattr("type")?;
     let attrs = pyo3::types::PyDict::new(py);
@@ -76,14 +77,15 @@ pub fn escape_value(value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     if value.is_instance(&safe)? {
         return Ok(value.clone().unbind());
     }
+    if is_markup_value(py, value)? {
+        return safe.call1((value,)).map(Bound::unbind);
+    }
 
     if value.is_none() {
         return safe.call0().map(Bound::unbind);
     }
 
-    let inspect = py.import("inspect")?;
-    let is_class: bool = inspect.getattr("isclass")?.call1((value,))?.extract()?;
-    if is_class {
+    if value.downcast::<PyType>().is_ok() {
         return Err(PyValueError::new_err(
             "Cannot escape classes. Instantiate the class first!",
         ));
@@ -99,17 +101,39 @@ pub fn escape_value(value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         return safe.call1((escaped,)).map(Bound::unbind);
     }
 
-    if value.hasattr(intern!(py, "__str__"))? {
-        let stringified = value.call_method0("__str__")?;
-        if stringified.is_instance(&safe)? {
-            return Ok(stringified.unbind());
-        }
-        let markupsafe = py.import("markupsafe")?;
-        let escaped = markupsafe.getattr("escape")?.call1((stringified,))?;
-        return safe.call1((escaped,)).map(Bound::unbind);
+    if let Ok(string) = value.downcast::<PyString>() {
+        return safe.call1((escape_str(&string.to_string_lossy()),)).map(Bound::unbind);
     }
 
-    let markupsafe = py.import("markupsafe")?;
-    let escaped = markupsafe.getattr("escape")?.call1((value,))?;
-    safe.call1((escaped,)).map(Bound::unbind)
+    let stringified = value.call_method0("__str__")?;
+    if stringified.is_instance(&safe)? {
+        return Ok(stringified.unbind());
+    }
+    if is_markup_value(py, &stringified)? {
+        return safe.call1((stringified,)).map(Bound::unbind);
+    }
+    let string = stringified.str()?.to_string_lossy().into_owned();
+    safe.call1((escape_str(&string),)).map(Bound::unbind)
+}
+
+fn is_markup_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+    match MARKUP_CLASS.get(py) {
+        Some(markup) => value.is_instance(markup.bind(py)),
+        None => Ok(false),
+    }
+}
+
+fn escape_str(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for char_ in value.chars() {
+        match char_ {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&#34;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(char_),
+        }
+    }
+    escaped
 }

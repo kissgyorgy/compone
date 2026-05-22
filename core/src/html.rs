@@ -2,9 +2,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 
-use crate::component::{empty_signature, make_dynamic_class};
+use crate::component::{empty_param_specs, empty_signature, make_dynamic_class};
 use crate::escape::{escape_to_string, safe_from_string};
-use crate::utils::{classes, is_python_bool, is_python_str};
+use crate::utils::{classes, is_python_bool, is_python_keyword, is_python_str};
 
 pub fn attrs_to_dict(attrs: &Bound<'_, PyAny>, target: &Bound<'_, PyDict>) -> PyResult<()> {
     for item in attrs.call_method0("items")?.try_iter()? {
@@ -29,8 +29,6 @@ pub fn parse_html_class(kwargs: &Bound<'_, PyDict>) -> PyResult<()> {
 
 pub fn render_attributes(props: &Bound<'_, PyDict>) -> PyResult<String> {
     let py = props.py();
-    let keyword = py.import("keyword")?;
-    let is_keyword = keyword.getattr("iskeyword")?;
     let mut bool_args = Vec::new();
     let mut keyval_args = Vec::new();
 
@@ -48,8 +46,7 @@ pub fn render_attributes(props: &Bound<'_, PyDict>) -> PyResult<String> {
         }
 
         if let Some(no_underscore) = key.strip_suffix('_') {
-            let is_keyword: bool = is_keyword.call1((no_underscore,))?.extract()?;
-            if is_keyword {
+            if is_python_keyword(no_underscore) {
                 key = no_underscore.to_string();
             }
         }
@@ -171,6 +168,7 @@ pub fn make_element_class(
     attrs.set_item("_html", html)?;
     attrs.set_item("_list_only", list_only)?;
     attrs.set_item("_sig", empty_signature(py)?)?;
+    attrs.set_item("_param_specs", empty_param_specs(py)?)?;
     attrs.set_item("_positional_args", Vec::<String>::new())?;
     attrs.set_item("_var_keyword", "kwargs")?;
     match default_attrs {
@@ -187,6 +185,7 @@ pub fn make_xml_comment_class(py: Python<'_>) -> PyResult<Py<PyAny>> {
     attrs.set_item("_html", false)?;
     attrs.set_item("_list_only", false)?;
     attrs.set_item("_sig", empty_signature(py)?)?;
+    attrs.set_item("_param_specs", empty_param_specs(py)?)?;
     attrs.set_item("_positional_args", Vec::<String>::new())?;
     attrs.set_item("_var_keyword", "kwargs")?;
     attrs.set_item("_attributes", py.None())?;
