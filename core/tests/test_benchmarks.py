@@ -1,14 +1,118 @@
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Any
+from importlib import import_module
+from typing import Protocol, TypedDict, TypeVar, cast
 
 import pytest
-from compone import Component, html
 from jinja2 import DictLoader, Environment, select_autoescape
+
+
+class Element(Protocol):
+    def __getitem__(self, children: object, /) -> "Element": ...
+
+
+class Tag(Protocol):
+    def __call__(self, **kwargs: object) -> Element: ...
+
+    def __getitem__(self, children: object, /) -> Element: ...
+
+
+class Html(Protocol):
+    def __getattr__(self, name: str, /) -> Tag: ...
+
+
+ComponentFunction = TypeVar("ComponentFunction", bound=Callable[..., object])
+
+
+class ComponentDecorator(Protocol):
+    def __call__(
+        self,
+        component: ComponentFunction,
+        /,
+    ) -> ComponentFunction: ...
+
+
+class Benchmark(Protocol):
+    def __call__(self, target: Callable[[], str], /) -> str: ...
+
+    def pedantic(
+        self,
+        target: Callable[[tuple[int, int]], str],
+        *,
+        setup: Callable[
+            [],
+            tuple[tuple[tuple[int, int]], dict[str, object]],
+        ],
+        rounds: int,
+        iterations: int,
+    ) -> str: ...
+
+
+class SmallCardData(TypedDict):
+    title: str
+    body: str
+    href: str
+
+
+class StatData(TypedDict):
+    label: str
+    value: str
+    status: str
+
+
+class BoardItemData(TypedDict):
+    name: str
+    description: str
+    badges: list[str]
+
+
+class BoardGroupData(TypedDict):
+    title: str
+    items: list[BoardItemData]
+
+
+class NavItemData(TypedDict):
+    href: str
+    label: str
+
+
+class FeatureData(TypedDict):
+    slug: str
+    title: str
+    body: str
+
+
+class PlanData(TypedDict):
+    name: str
+    price: str
+    features: list[str]
+
+
+class FaqData(TypedDict):
+    question: str
+    answer: str
+
+
+class ImportFeatureData(TypedDict):
+    title: str
+    body: str
+
+
+compone = import_module("compone")
+Component = cast(ComponentDecorator, vars(compone)["Component"])
+html = cast(Html, cast(object, import_module("compone.html")))
 
 TINY_EXPECTED = '<div a="3" b="4"></div>'
 TINY_CHILD_EXPECTED = '<div a="3" b="4">simple children</div>'
+FIRST_RENDER_VALUE_COUNT = 100
+FIRST_RENDER_VALUES = tuple(
+    (index + 1_000, index + 2_000) for index in range(FIRST_RENDER_VALUE_COUNT)
+)
+FIRST_RENDER_EXPECTED = tuple(
+    f'<div a="{a}" b="{b}"></div>' for a, b in FIRST_RENDER_VALUES
+)
 
-SMALL_CARD = {
+SMALL_CARD: SmallCardData = {
     "title": "Launch Notes",
     "body": "Fast Rust rendering",
     "href": "/notes",
@@ -21,7 +125,7 @@ SMALL_CARD_EXPECTED = (
     "</article>"
 )
 
-STATS = [
+STATS: list[StatData] = [
     {"label": "Requests", "value": "128k", "status": "ok"},
     {"label": "Latency", "value": "18ms", "status": "ok"},
     {"label": "Errors", "value": "7", "status": "warn"},
@@ -29,14 +133,18 @@ STATS = [
 ]
 MEDIUM_PANEL_EXPECTED = (
     '<section class="panel"><h2>Build metrics</h2><ul>'
-    '<li class="status status-ok" data-status="ok"><span class="label">Requests</span><strong>128k</strong></li>'
-    '<li class="status status-ok" data-status="ok"><span class="label">Latency</span><strong>18ms</strong></li>'
-    '<li class="status status-warn" data-status="warn"><span class="label">Errors</span><strong>7</strong></li>'
-    '<li class="status status-ok" data-status="ok"><span class="label">Workers</span><strong>12</strong></li>'
+    '<li class="status status-ok" data-status="ok">'
+    '<span class="label">Requests</span><strong>128k</strong></li>'
+    '<li class="status status-ok" data-status="ok">'
+    '<span class="label">Latency</span><strong>18ms</strong></li>'
+    '<li class="status status-warn" data-status="warn">'
+    '<span class="label">Errors</span><strong>7</strong></li>'
+    '<li class="status status-ok" data-status="ok">'
+    '<span class="label">Workers</span><strong>12</strong></li>'
     "</ul></section>"
 )
 
-NESTED_GROUPS = [
+NESTED_GROUPS: list[BoardGroupData] = [
     {
         "title": "Core",
         "items": [
@@ -71,22 +179,30 @@ NESTED_GROUPS = [
 NESTED_BOARD_EXPECTED = (
     '<section class="board"><h2>Component map</h2><div class="groups">'
     '<article class="group"><h3>Core</h3><ul>'
-    '<li><h4>Components</h4><p>Composable Python objects</p><div class="badges"><span class="badge">typed</span><span class="badge">reusable</span></div></li>'
-    '<li><h4>Rendering</h4><p>HTML without templates</p><div class="badges"><span class="badge">safe</span><span class="badge">fast</span></div></li>'
+    "<li><h4>Components</h4><p>Composable Python objects</p>"
+    '<div class="badges"><span class="badge">typed</span>'
+    '<span class="badge">reusable</span></div></li>'
+    "<li><h4>Rendering</h4><p>HTML without templates</p>"
+    '<div class="badges"><span class="badge">safe</span>'
+    '<span class="badge">fast</span></div></li>'
     "</ul></article>"
     '<article class="group"><h3>Integrations</h3><ul>'
-    '<li><h4>Static sites</h4><p>Generate pages ahead of time</p><div class="badges"><span class="badge">ssg</span><span class="badge">docs</span></div></li>'
-    '<li><h4>Frameworks</h4><p>Use the same components everywhere</p><div class="badges"><span class="badge">flask</span><span class="badge">django</span></div></li>'
+    "<li><h4>Static sites</h4><p>Generate pages ahead of time</p>"
+    '<div class="badges"><span class="badge">ssg</span>'
+    '<span class="badge">docs</span></div></li>'
+    "<li><h4>Frameworks</h4><p>Use the same components everywhere</p>"
+    '<div class="badges"><span class="badge">flask</span>'
+    '<span class="badge">django</span></div></li>'
     "</ul></article>"
     "</div></section>"
 )
 
-NAV_ITEMS = [
+NAV_ITEMS: list[NavItemData] = [
     {"href": "/", "label": "Home"},
     {"href": "/docs", "label": "Docs"},
     {"href": "/pricing", "label": "Pricing"},
 ]
-FEATURES = [
+FEATURES: list[FeatureData] = [
     {
         "slug": "speed",
         "title": "Speed",
@@ -108,12 +224,12 @@ FEATURES = [
         "body": "Share UI across frameworks",
     },
 ]
-PLANS = [
+PLANS: list[PlanData] = [
     {"name": "Starter", "price": "$19", "features": ["One project", "Email support"]},
     {"name": "Team", "price": "$49", "features": ["Ten projects", "Priority support"]},
     {"name": "Scale", "price": "$99", "features": ["Unlimited", "Private chat"]},
 ]
-FAQ_ITEMS = [
+FAQ_ITEMS: list[FaqData] = [
     {"question": "Is it typed?", "answer": "Yes, components keep Python signatures."},
     {"question": "Can it nest?", "answer": "Yes, children compose naturally."},
     {"question": "Is output escaped?", "answer": "Yes, unsafe strings are escaped."},
@@ -123,29 +239,41 @@ BIG_PAGE_EXPECTED = (
     '<header class="site-header"><a href="/" class="brand">Compone</a><nav>'
     '<a href="/">Home</a><a href="/docs">Docs</a><a href="/pricing">Pricing</a>'
     "</nav></header>"
-    '<section class="hero"><p class="eyebrow">Python components</p><h1>Build HTML with objects</h1>'
-    '<p class="lead">Reusable typed UI without template strings</p><a href="/docs" class="cta">Read the docs</a></section>'
+    '<section class="hero"><p class="eyebrow">Python components</p>'
+    "<h1>Build HTML with objects</h1>"
+    '<p class="lead">Reusable typed UI without template strings</p>'
+    '<a href="/docs" class="cta">Read the docs</a></section>'
     '<section class="features"><h2>Features</h2><div class="feature-grid">'
-    '<article class="feature" data-slug="speed"><h3>Speed</h3><p>Rust-backed rendering with low overhead</p></article>'
-    '<article class="feature" data-slug="safety"><h3>Safety</h3><p>Escaped output by default</p></article>'
-    '<article class="feature" data-slug="types"><h3>Types</h3><p>Components keep Python signatures</p></article>'
-    '<article class="feature" data-slug="reuse"><h3>Reuse</h3><p>Share UI across frameworks</p></article>'
+    '<article class="feature" data-slug="speed"><h3>Speed</h3>'
+    "<p>Rust-backed rendering with low overhead</p></article>"
+    '<article class="feature" data-slug="safety"><h3>Safety</h3>'
+    "<p>Escaped output by default</p></article>"
+    '<article class="feature" data-slug="types"><h3>Types</h3>'
+    "<p>Components keep Python signatures</p></article>"
+    '<article class="feature" data-slug="reuse"><h3>Reuse</h3>'
+    "<p>Share UI across frameworks</p></article>"
     "</div></section>"
     '<section class="pricing"><h2>Pricing</h2><div class="plans">'
-    '<article class="plan"><h3>Starter</h3><p class="price">$19</p><ul><li>One project</li><li>Email support</li></ul></article>'
-    '<article class="plan"><h3>Team</h3><p class="price">$49</p><ul><li>Ten projects</li><li>Priority support</li></ul></article>'
-    '<article class="plan"><h3>Scale</h3><p class="price">$99</p><ul><li>Unlimited</li><li>Private chat</li></ul></article>'
+    '<article class="plan"><h3>Starter</h3><p class="price">$19</p><ul>'
+    "<li>One project</li><li>Email support</li></ul></article>"
+    '<article class="plan"><h3>Team</h3><p class="price">$49</p><ul>'
+    "<li>Ten projects</li><li>Priority support</li></ul></article>"
+    '<article class="plan"><h3>Scale</h3><p class="price">$99</p><ul>'
+    "<li>Unlimited</li><li>Private chat</li></ul></article>"
     "</div></section>"
     '<section class="faq"><h2>Questions</h2>'
-    "<details><summary>Is it typed?</summary><p>Yes, components keep Python signatures.</p></details>"
-    "<details><summary>Can it nest?</summary><p>Yes, children compose naturally.</p></details>"
-    "<details><summary>Is output escaped?</summary><p>Yes, unsafe strings are escaped.</p></details>"
+    "<details><summary>Is it typed?</summary>"
+    "<p>Yes, components keep Python signatures.</p></details>"
+    "<details><summary>Can it nest?</summary>"
+    "<p>Yes, children compose naturally.</p></details>"
+    "<details><summary>Is output escaped?</summary>"
+    "<p>Yes, unsafe strings are escaped.</p></details>"
     "</section>"
     '<footer class="footer"><p>© 2026 Compone</p></footer>'
     "</main>"
 )
 
-IMPORT_FEATURES = [
+IMPORT_FEATURES: list[ImportFeatureData] = [
     {"title": "Macro parity", "body": "Jinja import renders the same HTML"},
     {"title": "Component parity", "body": "Compone components render matching HTML"},
 ]
@@ -153,8 +281,10 @@ IMPORTED_EXPECTED = (
     '<section class="imported"><header><h2>Imported macros</h2><nav>'
     '<a href="/">Home</a><a href="/docs">Docs</a><a href="/pricing">Pricing</a>'
     "</nav></header>"
-    '<div class="cards"><article><h3>Macro parity</h3><p>Jinja import renders the same HTML</p></article>'
-    "<article><h3>Component parity</h3><p>Compone components render matching HTML</p></article></div>"
+    '<div class="cards"><article><h3>Macro parity</h3>'
+    "<p>Jinja import renders the same HTML</p></article>"
+    "<article><h3>Component parity</h3>"
+    "<p>Compone components render matching HTML</p></article></div>"
     "</section>"
 )
 
@@ -171,8 +301,11 @@ def CachedTinyComp(a: int, b: int) -> object:
 
 
 @Component
-def TinyChildComp(a: int, b: int, children: object) -> object:
+def TinyChildComp(a: int, b: int, children: object = None) -> object:
     return html.Div(a=a, b=b)[children]
+
+
+TinyChildComponent = cast(Callable[[int, int], Element], TinyChildComp)
 
 
 @Component
@@ -193,7 +326,7 @@ def StatRow(label: str, value: str, status: str) -> object:
 
 
 @Component
-def StatsPanel(title: str, items: list[dict[str, str]]) -> object:
+def StatsPanel(title: str, items: list[StatData]) -> object:
     return html.Section(class_="panel")[
         html.H2[title],
         html.Ul[[StatRow(**item) for item in items]],
@@ -215,7 +348,7 @@ def BoardItem(name: str, description: str, badges: list[str]) -> object:
 
 
 @Component
-def BoardGroup(title: str, items: list[dict[str, Any]]) -> object:
+def BoardGroup(title: str, items: list[BoardItemData]) -> object:
     return html.Article(class_="group")[
         html.H3[title],
         html.Ul[[BoardItem(**item) for item in items]],
@@ -223,7 +356,7 @@ def BoardGroup(title: str, items: list[dict[str, Any]]) -> object:
 
 
 @Component
-def NestedBoard(title: str, groups: list[dict[str, Any]]) -> object:
+def NestedBoard(title: str, groups: list[BoardGroupData]) -> object:
     return html.Section(class_="board")[
         html.H2[title],
         html.Div(class_="groups")[[BoardGroup(**group) for group in groups]],
@@ -231,7 +364,7 @@ def NestedBoard(title: str, groups: list[dict[str, Any]]) -> object:
 
 
 @Component
-def SiteHeader(nav_items: list[dict[str, str]]) -> object:
+def SiteHeader(nav_items: list[NavItemData]) -> object:
     return html.Header(class_="site-header")[
         html.A(href="/", class_="brand")["Compone"],
         html.Nav[[html.A(href=item["href"])[item["label"]] for item in nav_items]],
@@ -254,7 +387,7 @@ def FeatureCard(slug: str, title: str, body: str) -> object:
 
 
 @Component
-def FeatureSection(features: list[dict[str, str]]) -> object:
+def FeatureSection(features: list[FeatureData]) -> object:
     return html.Section(class_="features")[
         html.H2["Features"],
         html.Div(class_="feature-grid")[
@@ -273,7 +406,7 @@ def PlanCard(name: str, price: str, features: list[str]) -> object:
 
 
 @Component
-def PricingSection(plans: list[dict[str, Any]]) -> object:
+def PricingSection(plans: list[PlanData]) -> object:
     return html.Section(class_="pricing")[
         html.H2["Pricing"],
         html.Div(class_="plans")[[PlanCard(**plan) for plan in plans]],
@@ -281,7 +414,7 @@ def PricingSection(plans: list[dict[str, Any]]) -> object:
 
 
 @Component
-def FaqSection(items: list[dict[str, str]]) -> object:
+def FaqSection(items: list[FaqData]) -> object:
     return html.Section(class_="faq")[
         html.H2["Questions"],
         [
@@ -293,10 +426,10 @@ def FaqSection(items: list[dict[str, str]]) -> object:
 
 @Component
 def BigLandingPage(
-    nav_items: list[dict[str, str]],
-    features: list[dict[str, str]],
-    plans: list[dict[str, Any]],
-    faq_items: list[dict[str, str]],
+    nav_items: list[NavItemData],
+    features: list[FeatureData],
+    plans: list[PlanData],
+    faq_items: list[FaqData],
 ) -> object:
     return html.Main(class_="landing")[
         SiteHeader(nav_items),
@@ -315,8 +448,8 @@ def ImportedCard(title: str, body: str) -> object:
 
 @Component
 def ImportedComponentPage(
-    nav_items: list[dict[str, str]],
-    features: list[dict[str, str]],
+    nav_items: list[NavItemData],
+    features: list[ImportFeatureData],
 ) -> object:
     return html.Section(class_="imported")[
         html.Header[
@@ -346,8 +479,10 @@ TEMPLATES = {
     "medium_panel.html": (
         '<section class="panel"><h2>{{ title }}</h2><ul>'
         "{% for item in items %}"
-        '<li class="status status-{{ item.status }}" data-status="{{ item.status }}">'
-        '<span class="label">{{ item.label }}</span><strong>{{ item.value }}</strong></li>'
+        '<li class="status status-{{ item.status }}" '
+        'data-status="{{ item.status }}">'
+        '<span class="label">{{ item.label }}</span>'
+        "<strong>{{ item.value }}</strong></li>"
         "{% endfor %}"
         "</ul></section>"
     ),
@@ -356,8 +491,11 @@ TEMPLATES = {
         "{% for group in groups %}"
         '<article class="group"><h3>{{ group.title }}</h3><ul>'
         "{% for item in group['items'] %}"
-        '<li><h4>{{ item.name }}</h4><p>{{ item.description }}</p><div class="badges">'
-        '{% for badge in item.badges %}<span class="badge">{{ badge }}</span>{% endfor %}'
+        "<li><h4>{{ item.name }}</h4><p>{{ item.description }}</p>"
+        '<div class="badges">'
+        "{% for badge in item.badges %}"
+        '<span class="badge">{{ badge }}</span>'
+        "{% endfor %}"
         "</div></li>"
         "{% endfor %}"
         "</ul></article>"
@@ -367,25 +505,32 @@ TEMPLATES = {
     "big_page.html": (
         '<main class="landing">'
         '<header class="site-header"><a href="/" class="brand">Compone</a><nav>'
-        '{% for item in nav_items %}<a href="{{ item.href }}">{{ item.label }}</a>{% endfor %}'
+        "{% for item in nav_items %}"
+        '<a href="{{ item.href }}">{{ item.label }}</a>'
+        "{% endfor %}"
         "</nav></header>"
-        '<section class="hero"><p class="eyebrow">Python components</p><h1>Build HTML with objects</h1>'
-        '<p class="lead">Reusable typed UI without template strings</p><a href="/docs" class="cta">Read the docs</a></section>'
+        '<section class="hero"><p class="eyebrow">Python components</p>'
+        "<h1>Build HTML with objects</h1>"
+        '<p class="lead">Reusable typed UI without template strings</p>'
+        '<a href="/docs" class="cta">Read the docs</a></section>'
         '<section class="features"><h2>Features</h2><div class="feature-grid">'
         "{% for feature in features %}"
-        '<article class="feature" data-slug="{{ feature.slug }}"><h3>{{ feature.title }}</h3><p>{{ feature.body }}</p></article>'
+        '<article class="feature" data-slug="{{ feature.slug }}">'
+        "<h3>{{ feature.title }}</h3><p>{{ feature.body }}</p></article>"
         "{% endfor %}"
         "</div></section>"
         '<section class="pricing"><h2>Pricing</h2><div class="plans">'
         "{% for plan in plans %}"
-        '<article class="plan"><h3>{{ plan.name }}</h3><p class="price">{{ plan.price }}</p><ul>'
+        '<article class="plan"><h3>{{ plan.name }}</h3>'
+        '<p class="price">{{ plan.price }}</p><ul>'
         "{% for feature in plan.features %}<li>{{ feature }}</li>{% endfor %}"
         "</ul></article>"
         "{% endfor %}"
         "</div></section>"
         '<section class="faq"><h2>Questions</h2>'
         "{% for item in faq_items %}"
-        "<details><summary>{{ item.question }}</summary><p>{{ item.answer }}</p></details>"
+        "<details><summary>{{ item.question }}</summary>"
+        "<p>{{ item.answer }}</p></details>"
         "{% endfor %}"
         "</section>"
         '<footer class="footer"><p>© 2026 Compone</p></footer>'
@@ -393,19 +538,23 @@ TEMPLATES = {
     ),
     "macros.html": (
         "{% macro nav(items) %}<nav>{% for item in items %}"
-        '<a href="{{ item.href }}">{{ item.label }}</a>{% endfor %}</nav>{% endmacro %}'
-        "{% macro card(item) %}<article><h3>{{ item.title }}</h3><p>{{ item.body }}</p></article>{% endmacro %}"
+        '<a href="{{ item.href }}">{{ item.label }}</a>'
+        "{% endfor %}</nav>{% endmacro %}"
+        "{% macro card(item) %}<article><h3>{{ item.title }}</h3>"
+        "<p>{{ item.body }}</p></article>{% endmacro %}"
     ),
     "imported.html": (
         '{% import "macros.html" as ui %}'
-        '<section class="imported"><header><h2>Imported macros</h2>{{ ui.nav(nav_items) }}</header>'
-        '<div class="cards">{% for feature in features %}{{ ui.card(feature) }}{% endfor %}</div></section>'
+        '<section class="imported"><header><h2>Imported macros</h2>'
+        "{{ ui.nav(nav_items) }}</header>"
+        '<div class="cards">{% for feature in features %}'
+        "{{ ui.card(feature) }}{% endfor %}</div></section>"
     ),
 }
 
 
 @pytest.mark.benchmark(group="tiny")
-def test_tiny_compone(benchmark: Any):
+def test_tiny_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(TinyComp(3, 4))
 
@@ -414,7 +563,7 @@ def test_tiny_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="tiny")
-def test_tiny_compone_cached(benchmark: Any):
+def test_tiny_compone_cached(benchmark: Benchmark):
     def run_compone() -> str:
         return str(CachedTinyComp(3, 4))
 
@@ -423,7 +572,7 @@ def test_tiny_compone_cached(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="tiny")
-def test_tiny_jinja2(benchmark: Any):
+def test_tiny_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -434,16 +583,16 @@ def test_tiny_jinja2(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="tiny_child")
-def test_tiny_child_compone(benchmark: Any):
+def test_tiny_child_compone(benchmark: Benchmark):
     def run_compone() -> str:
-        return str(TinyChildComp(3, 4)["simple children"])
+        return str(TinyChildComponent(3, 4)["simple children"])
 
     result = benchmark(run_compone)
     assert result == TINY_CHILD_EXPECTED
 
 
 @pytest.mark.benchmark(group="tiny_child")
-def test_tiny_child_jinja2(benchmark: Any):
+def test_tiny_child_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -459,8 +608,69 @@ def test_tiny_child_jinja2(benchmark: Any):
     assert result == TINY_CHILD_EXPECTED
 
 
+@pytest.mark.benchmark(group="first_render_unique")
+def test_first_render_unique_compone(benchmark: Benchmark):
+    outputs: list[str] = []
+    values = iter(FIRST_RENDER_VALUES)
+
+    def setup() -> tuple[tuple[tuple[int, int]], dict[str, object]]:
+        return (next(values),), {}
+
+    def run_compone(value: tuple[int, int]) -> str:
+        result = str(TinyComp(*value))
+        outputs.append(result)
+        return result
+
+    # Each round uses a distinct value, so no render can hit the cache.
+    result = benchmark.pedantic(
+        run_compone,
+        setup=setup,
+        rounds=FIRST_RENDER_VALUE_COUNT,
+        iterations=1,
+    )
+    assert result == outputs[-1]
+
+    if len(outputs) < FIRST_RENDER_VALUE_COUNT:
+        for value in FIRST_RENDER_VALUES[len(outputs) :]:
+            outputs.append(str(TinyComp(*value)))
+
+    normalized_outputs = tuple(str.__str__(output) for output in outputs)
+    assert normalized_outputs == FIRST_RENDER_EXPECTED
+
+
+@pytest.mark.benchmark(group="first_render_unique")
+def test_first_render_unique_jinja2(benchmark: Benchmark):
+    env = make_environment(TEMPLATES)
+    outputs: list[str] = []
+    values = iter(FIRST_RENDER_VALUES)
+
+    def setup() -> tuple[tuple[tuple[int, int]], dict[str, object]]:
+        return (next(values),), {}
+
+    def run_jinja2(value: tuple[int, int]) -> str:
+        a, b = value
+        result = render_template(env, "tiny.html", a=a, b=b)
+        outputs.append(result)
+        return result
+
+    # Match the Compone benchmark: one pedantic round per distinct value.
+    result = benchmark.pedantic(
+        run_jinja2,
+        setup=setup,
+        rounds=FIRST_RENDER_VALUE_COUNT,
+        iterations=1,
+    )
+    assert result == outputs[-1]
+
+    if len(outputs) < FIRST_RENDER_VALUE_COUNT:
+        for a, b in FIRST_RENDER_VALUES[len(outputs) :]:
+            outputs.append(render_template(env, "tiny.html", a=a, b=b))
+
+    assert tuple(outputs) == FIRST_RENDER_EXPECTED
+
+
 @pytest.mark.benchmark(group="small_card")
-def test_small_card_compone(benchmark: Any):
+def test_small_card_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(SmallCard(**SMALL_CARD))
 
@@ -469,7 +679,7 @@ def test_small_card_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="small_card")
-def test_small_card_jinja2(benchmark: Any):
+def test_small_card_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -480,7 +690,7 @@ def test_small_card_jinja2(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="medium_panel")
-def test_medium_panel_compone(benchmark: Any):
+def test_medium_panel_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(StatsPanel("Build metrics", STATS))
 
@@ -489,7 +699,7 @@ def test_medium_panel_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="medium_panel")
-def test_medium_panel_jinja2(benchmark: Any):
+def test_medium_panel_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -502,7 +712,7 @@ def test_medium_panel_jinja2(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="nested_board")
-def test_nested_board_compone(benchmark: Any):
+def test_nested_board_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(NestedBoard("Component map", NESTED_GROUPS))
 
@@ -511,7 +721,7 @@ def test_nested_board_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="nested_board")
-def test_nested_board_jinja2(benchmark: Any):
+def test_nested_board_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -527,7 +737,7 @@ def test_nested_board_jinja2(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="big_page")
-def test_big_page_compone(benchmark: Any):
+def test_big_page_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(BigLandingPage(NAV_ITEMS, FEATURES, PLANS, FAQ_ITEMS))
 
@@ -536,7 +746,7 @@ def test_big_page_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="big_page")
-def test_big_page_jinja2(benchmark: Any):
+def test_big_page_jinja2(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:
@@ -554,7 +764,7 @@ def test_big_page_jinja2(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="imported_components")
-def test_imported_components_compone(benchmark: Any):
+def test_imported_components_compone(benchmark: Benchmark):
     def run_compone() -> str:
         return str(ImportedComponentPage(NAV_ITEMS, IMPORT_FEATURES))
 
@@ -563,7 +773,7 @@ def test_imported_components_compone(benchmark: Any):
 
 
 @pytest.mark.benchmark(group="imported_components")
-def test_imported_components_jinja2_imported_macros(benchmark: Any):
+def test_imported_components_jinja2_imported_macros(benchmark: Benchmark):
     env = make_environment(TEMPLATES)
 
     def run_jinja2() -> str:

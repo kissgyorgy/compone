@@ -1,10 +1,10 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyTuple};
+use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 
 use crate::component::{empty_param_specs, empty_signature, make_dynamic_class};
 use crate::escape::{escape_str, escape_to_string, is_safe_or_markup_value, safe_from_string};
-use crate::utils::{classes, is_python_bool, is_python_keyword, is_python_str};
+use crate::utils::{classes, is_python_bool, is_python_keyword};
 
 pub fn attrs_to_dict(attrs: &Bound<'_, PyAny>, target: &Bound<'_, PyDict>) -> PyResult<()> {
     for item in attrs.call_method0("items")?.try_iter()? {
@@ -78,12 +78,15 @@ fn render_attribute_key(raw_key: &str) -> String {
 
 fn render_attribute_value(value: &Bound<'_, PyAny>) -> PyResult<String> {
     let py = value.py();
-    if is_python_str(value)? {
-        let value_string = value.str()?.to_string_lossy().into_owned();
+    if let Ok(string) = value.downcast::<PyString>() {
+        let value_string = string.to_string_lossy().into_owned();
         if value_string.contains('"') && value_string.contains('\'') {
             return Err(PyValueError::new_err(
                 "Both single and double quotes in attribute value",
             ));
+        }
+        if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+            return Ok(escape_str(&value_string));
         }
         if is_safe_or_markup_value(py, value)? {
             return Ok(value_string);

@@ -68,12 +68,17 @@ pub fn safe_from_string(py: Python<'_>, value: impl Into<String>) -> PyResult<Py
 
 pub fn escape_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
     let py = value.py();
-    if is_safe_or_markup_value(py, value)? {
-        return Ok(value.str()?.to_string_lossy().into_owned());
-    }
-
     if value.is_none() {
         return Ok(String::new());
+    }
+
+    if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+        let string = value.downcast::<PyString>()?;
+        return Ok(escape_str(&string.to_string_lossy()));
+    }
+
+    if is_safe_or_markup_value(py, value)? {
+        return Ok(value.str()?.to_string_lossy().into_owned());
     }
 
     if value.downcast::<PyType>().is_ok() {
