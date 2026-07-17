@@ -1395,8 +1395,8 @@ fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String>
             }
 
             let rendered = render_instance_to_string_uncached(slf, kind)?;
-            let safe_rendered = safe_from_string(py, rendered.clone())?;
             if render_cache_should_store(&key) {
+                let safe_rendered = safe_from_string(py, rendered.clone())?;
                 render_cache_set(py, key, rendered.clone(), &safe_rendered);
             }
             return Ok(rendered);
