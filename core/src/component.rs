@@ -11,7 +11,7 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyString, 
 
 use crate::escape::{escape_to_string, is_safe_or_markup_value, safe_empty, safe_from_string};
 use crate::html::{attrs_to_dict, parse_html_class, render_attributes_from_pairs};
-use crate::utils::{is_iterable_value, is_python_keyword};
+use crate::utils::is_python_keyword;
 
 const MAX_RENDER_CACHE_ENTRIES: usize = 4096;
 const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
@@ -1700,12 +1700,19 @@ fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyR
 }
 
 fn children_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Py<PyAny>>> {
-    if !is_iterable_value(value)? {
+    if value.downcast::<PyString>().is_ok() {
         return Ok(vec![value.clone().unbind()]);
     }
 
-    let mut children = Vec::new();
-    for child in PyIterator::from_object(value)? {
+    let iterator = match PyIterator::from_object(value) {
+        Ok(iterator) => iterator,
+        Err(error) if error.is_instance_of::<PyTypeError>(value.py()) => {
+            return Ok(vec![value.clone().unbind()]);
+        }
+        Err(error) => return Err(error),
+    };
+    let mut children = Vec::with_capacity(iterator.size_hint().0);
+    for child in iterator {
         children.push(child?.unbind());
     }
     Ok(children)
