@@ -1124,21 +1124,13 @@ fn bind_arguments_rust(
 ) -> PyResult<BoundState> {
     let mut remaining = extract_string_dict_items(kwargs)?;
     let mut assigned: Vec<Option<Py<PyAny>>> = signature.params.iter().map(|_| None).collect();
-    let positional_indices: Vec<usize> = signature
-        .params
-        .iter()
-        .enumerate()
-        .filter_map(|(index, param)| {
-            matches!(param.kind, ParamKind::PosOnly | ParamKind::PosOrKw).then_some(index)
-        })
-        .collect();
 
-    if args.len() > positional_indices.len() {
+    if args.len() > signature.positional_args.len() {
         return Err(PyTypeError::new_err("too many positional arguments"));
     }
 
     for (arg_index, value) in args.iter().enumerate() {
-        assigned[positional_indices[arg_index]] = Some(value.clone().unbind());
+        assigned[arg_index] = Some(value.unbind());
     }
 
     for (index, param) in signature.params.iter().enumerate() {
