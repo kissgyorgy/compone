@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
@@ -57,7 +59,8 @@ pub fn render_attributes_from_pairs(
             continue;
         }
 
-        if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+        let value_type = value.get_type().as_ptr();
+        if value_type == py.get_type::<PyString>().as_ptr() {
             let value = value.downcast::<PyString>()?.to_string_lossy();
             if value.contains('"') && value.contains('\'') {
                 return Err(PyValueError::new_err(
@@ -70,6 +73,17 @@ pub fn render_attributes_from_pairs(
             escape_str_into(&value, &mut rendered);
             rendered.push('"');
             continue;
+        }
+        if value_type == py.get_type::<PyInt>().as_ptr() {
+            let value = value.downcast::<PyInt>()?;
+            if let Ok(value) = value.extract::<i64>() {
+                rendered.push(' ');
+                render_attribute_key_into(raw_key, &mut rendered);
+                rendered.push_str("=\"");
+                write!(rendered, "{value}").expect("writing to String cannot fail");
+                rendered.push('"');
+                continue;
+            }
         }
 
         let escaped_value = render_attribute_value(value)?;
