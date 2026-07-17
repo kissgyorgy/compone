@@ -67,6 +67,7 @@ pub fn render_attributes_from_pairs(
                     "Both single and double quotes in attribute value",
                 ));
             }
+            rendered.reserve(raw_key.len() + value.len() + 4);
             rendered.push(' ');
             render_attribute_key_into(raw_key, &mut rendered);
             rendered.push_str("=\"");
