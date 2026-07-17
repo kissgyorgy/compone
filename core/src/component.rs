@@ -1050,9 +1050,18 @@ fn bind_arguments_exact_keywords(
         return Ok(None);
     }
 
+    if let Some(bound) = bind_arguments_in_keyword_order(signature, kwargs) {
+        return Ok(Some(bound));
+    }
+
     let mut found = 0;
-    let mut bound_args = Vec::new();
-    let mut bound_kwargs = Vec::new();
+    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
+    let mut bound_kwargs = Vec::with_capacity(
+        signature
+            .params
+            .len()
+            .saturating_sub(signature.positional_args.len()),
+    );
     for param in &signature.params {
         let value = match kwargs.get_item(&param.name)? {
             Some(value) => {
@@ -1094,6 +1103,35 @@ fn bind_arguments_exact_keywords(
     }
 
     Ok(Some((bound_args, bound_kwargs, None)))
+}
+
+fn bind_arguments_in_keyword_order(
+    signature: &SignatureSpec,
+    kwargs: &Bound<'_, PyDict>,
+) -> Option<InitBoundState> {
+    if kwargs.len() != signature.params.len() {
+        return None;
+    }
+
+    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
+    let mut bound_kwargs = Vec::with_capacity(
+        signature
+            .params
+            .len()
+            .saturating_sub(signature.positional_args.len()),
+    );
+    for (param, (key, value)) in signature.params.iter().zip(kwargs.iter()) {
+        let key = key.downcast::<PyString>().ok()?;
+        if key.to_string_lossy() != param.name {
+            return None;
+        }
+        match param.kind {
+            ParamKind::PosOrKw => bound_args.push(value.unbind()),
+            ParamKind::KwOnly => bound_kwargs.push((param.name.clone(), value.unbind())),
+            ParamKind::PosOnly | ParamKind::VarKw => return None,
+        }
+    }
+    Some((bound_args, bound_kwargs, None))
 }
 
 fn bind_arguments_without_kwargs(
