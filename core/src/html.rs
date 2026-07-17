@@ -61,7 +61,8 @@ pub fn render_attributes_from_pairs(
 
         let value_type = value.get_type().as_ptr();
         if value_type == py.get_type::<PyString>().as_ptr() {
-            let value = value.downcast::<PyString>()?.to_string_lossy();
+            // SAFETY: The exact type pointer was checked above.
+            let value = unsafe { value.downcast_unchecked::<PyString>() }.to_string_lossy();
             if value.contains('"') && value.contains('\'') {
                 return Err(PyValueError::new_err(
                     "Both single and double quotes in attribute value",
@@ -76,7 +77,8 @@ pub fn render_attributes_from_pairs(
             continue;
         }
         if value_type == py.get_type::<PyInt>().as_ptr() {
-            let value = value.downcast::<PyInt>()?;
+            // SAFETY: The exact type pointer was checked above.
+            let value = unsafe { value.downcast_unchecked::<PyInt>() };
             if let Ok(value) = value.extract::<i64>() {
                 rendered.push(' ');
                 render_attribute_key_into(raw_key, &mut rendered);
