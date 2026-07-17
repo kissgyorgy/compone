@@ -7,6 +7,7 @@ use std::sync::Arc;
 use pyo3::exceptions::{PyAssertionError, PyAttributeError, PySyntaxError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyString, PyTuple, PyType};
+use smallvec::SmallVec;
 
 use crate::escape::{
     escape_str_into, escape_to_string, is_safe_or_markup_value, safe_empty, safe_from_string,
@@ -19,6 +20,8 @@ const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
 const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
 const CLASS_METADATA_CACHE_SLOTS: usize = 256;
 const LAST_RENDER_CACHE_SLOTS: usize = 256;
+
+type Children = SmallVec<[Py<PyAny>; 4]>;
 
 struct ClassMetadataCacheEntry {
     type_ptr: usize,
@@ -91,7 +94,7 @@ pub struct RustComponent {
     bound_args: Option<Py<PyAny>>,
     args: Vec<Py<PyAny>>,
     kwargs: Vec<(String, Py<PyAny>)>,
-    children: Vec<Py<PyAny>>,
+    children: Children,
     original_kwargs: Option<Vec<(String, Py<PyAny>)>>,
     parent: Option<Py<PyAny>>,
     user_instance: Option<Py<PyAny>>,
@@ -115,7 +118,7 @@ impl RustComponent {
             bound_args: None,
             args: Vec::new(),
             kwargs: Vec::new(),
-            children: Vec::new(),
+            children: Children::new(),
             original_kwargs: None,
             parent: None,
             user_instance: None,
@@ -2153,19 +2156,23 @@ fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyR
     Ok(())
 }
 
-fn children_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Py<PyAny>>> {
+fn children_from_value(value: &Bound<'_, PyAny>) -> PyResult<Children> {
     if value.downcast::<PyString>().is_ok() {
-        return Ok(vec![value.clone().unbind()]);
+        let mut children = Children::new();
+        children.push(value.clone().unbind());
+        return Ok(children);
     }
 
     let iterator = match PyIterator::from_object(value) {
         Ok(iterator) => iterator,
         Err(error) if error.is_instance_of::<PyTypeError>(value.py()) => {
-            return Ok(vec![value.clone().unbind()]);
+            let mut children = Children::new();
+            children.push(value.clone().unbind());
+            return Ok(children);
         }
         Err(error) => return Err(error),
     };
-    let mut children = Vec::with_capacity(iterator.size_hint().0);
+    let mut children = Children::new();
     for child in iterator {
         children.push(child?.unbind());
     }

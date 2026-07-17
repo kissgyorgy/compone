@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.23.5", features = ["abi3-py310", "extension-module"] }
+smallvec = "1.15.1"
 
 [profile.release]
 lto = "fat"
