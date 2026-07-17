@@ -374,7 +374,7 @@ fn initialize_instance(
             bound
         } else {
             let (args, kwargs) = bind_arguments_without_kwargs(py, &metadata.signature, args)?;
-            (args, kwargs, Some(Vec::new()))
+            (args, kwargs, None)
         }
     } else if let Some(kwargs_dict) = kwargs {
         if let Some(bound) = bind_arguments_exact_keywords(py, &metadata.signature, args, kwargs_dict)? {
@@ -388,15 +388,29 @@ fn initialize_instance(
             let (args, kwargs) =
                 bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
 
-            let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
-            (args, kwargs, Some(original_kwargs))
+            let original_kwargs = if matches!(
+                metadata.kind,
+                ComponentKind::Element | ComponentKind::Void
+            ) {
+                Some(extract_string_dict_items(&prepared_kwargs)?)
+            } else {
+                None
+            };
+            (args, kwargs, original_kwargs)
         }
     } else {
         let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
         let (args, kwargs) =
             bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
-        let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
-        (args, kwargs, Some(original_kwargs))
+        let original_kwargs = if matches!(
+            metadata.kind,
+            ComponentKind::Element | ComponentKind::Void
+        ) {
+            Some(extract_string_dict_items(&prepared_kwargs)?)
+        } else {
+            None
+        };
+        (args, kwargs, original_kwargs)
     };
 
     let mut borrowed = slf.borrow_mut();
@@ -1001,7 +1015,7 @@ fn bind_arguments_exact_positionals(
     }
 
     let bound_args = args.iter().map(Bound::unbind).collect();
-    Some((bound_args, Vec::new(), Some(Vec::new())))
+    Some((bound_args, Vec::new(), None))
 }
 
 fn bind_arguments_exact_keywords(
@@ -1063,12 +1077,7 @@ fn bind_arguments_exact_keywords(
         }
     }
 
-    let original_kwargs = extract_string_dict_items(kwargs)?;
-    Ok(Some((
-        bound_args,
-        bound_kwargs,
-        Some(original_kwargs),
-    )))
+    Ok(Some((bound_args, bound_kwargs, None)))
 }
 
 fn bind_arguments_without_kwargs(
