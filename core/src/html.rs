@@ -85,6 +85,32 @@ pub fn render_attributes_from_pairs(
                 continue;
             }
         }
+        if value_type == py.get_type::<PyFloat>().as_ptr() {
+            rendered.push(' ');
+            render_attribute_key_into(raw_key, &mut rendered);
+            rendered.push_str("=\"");
+            escape_str_into(&value.str()?.to_string_lossy(), &mut rendered);
+            rendered.push('"');
+            continue;
+        }
+        if value_type == py.get_type::<PyTuple>().as_ptr()
+            || value_type == py.get_type::<PyList>().as_ptr()
+        {
+            rendered.push(' ');
+            render_attribute_key_into(raw_key, &mut rendered);
+            rendered.push_str("=\"");
+            let mut first = true;
+            for item in value.try_iter()? {
+                if first {
+                    first = false;
+                } else {
+                    rendered.push(' ');
+                }
+                escape_str_into(&item?.str()?.to_string_lossy(), &mut rendered);
+            }
+            rendered.push('"');
+            continue;
+        }
 
         let escaped_value = render_attribute_value(value)?;
         rendered.push(' ');
