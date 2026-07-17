@@ -96,21 +96,23 @@ pub fn render_attributes_from_pairs(
             rendered.push('"');
             continue;
         }
-        if value_type == py.get_type::<PyTuple>().as_ptr()
-            || value_type == py.get_type::<PyList>().as_ptr()
-        {
+        if value_type == py.get_type::<PyTuple>().as_ptr() {
+            // SAFETY: The exact type pointer was checked above.
+            let values = unsafe { value.downcast_unchecked::<PyTuple>() };
             rendered.push(' ');
             render_attribute_key_into(raw_key, &mut rendered);
             rendered.push_str("=\"");
-            let mut first = true;
-            for item in value.try_iter()? {
-                if first {
-                    first = false;
-                } else {
-                    rendered.push(' ');
-                }
-                escape_str_into(&item?.str()?.to_string_lossy(), &mut rendered);
-            }
+            render_attribute_sequence(values.iter(), &mut rendered)?;
+            rendered.push('"');
+            continue;
+        }
+        if value_type == py.get_type::<PyList>().as_ptr() {
+            // SAFETY: The exact type pointer was checked above.
+            let values = unsafe { value.downcast_unchecked::<PyList>() };
+            rendered.push(' ');
+            render_attribute_key_into(raw_key, &mut rendered);
+            rendered.push_str("=\"");
+            render_attribute_sequence(values.iter(), &mut rendered)?;
             rendered.push('"');
             continue;
         }
@@ -126,6 +128,22 @@ pub fn render_attributes_from_pairs(
     }
 
     Ok(rendered)
+}
+
+fn render_attribute_sequence<'py>(
+    values: impl Iterator<Item = Bound<'py, PyAny>>,
+    rendered: &mut String,
+) -> PyResult<()> {
+    let mut first = true;
+    for item in values {
+        if first {
+            first = false;
+        } else {
+            rendered.push(' ');
+        }
+        escape_str_into(&item.str()?.to_string_lossy(), rendered);
+    }
+    Ok(())
 }
 
 fn render_attribute_key_into(raw_key: &str, rendered: &mut String) {
