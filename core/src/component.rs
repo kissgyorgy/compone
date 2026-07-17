@@ -17,7 +17,13 @@ use crate::utils::is_python_keyword;
 const MAX_RENDER_CACHE_ENTRIES: usize = 4096;
 const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
 const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
+const CLASS_METADATA_CACHE_SLOTS: usize = 256;
 const LAST_RENDER_CACHE_SLOTS: usize = 256;
+
+struct ClassMetadataCacheEntry {
+    type_ptr: usize,
+    metadata: Rc<ClassMetadata>,
+}
 
 struct LastRenderedCacheEntry {
     type_ptr: usize,
@@ -29,6 +35,9 @@ struct LastRenderedCacheEntry {
 thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
     static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
+    static CLASS_CACHE_INDEX: RefCell<Vec<Option<ClassMetadataCacheEntry>>> = RefCell::new(
+        (0..CLASS_METADATA_CACHE_SLOTS).map(|_| None).collect()
+    );
     static RENDER_CACHE: RefCell<HashMap<Rc<RenderCacheKey>, Rc<RenderedCacheEntry>>> = RefCell::new(HashMap::new());
     static LAST_RENDER_CACHE: RefCell<Vec<Option<LastRenderedCacheEntry>>> = RefCell::new(
         (0..LAST_RENDER_CACHE_SLOTS).map(|_| None).collect()
@@ -39,6 +48,11 @@ thread_local! {
 pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     PARENT_STACK.with(|stack| stack.borrow_mut().clear());
     CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
+    CLASS_CACHE_INDEX.with(|cache| {
+        for entry in cache.borrow_mut().iter_mut() {
+            *entry = None;
+        }
+    });
     RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
     LAST_RENDER_CACHE.with(|cache| {
         for entry in cache.borrow_mut().iter_mut() {
@@ -933,16 +947,39 @@ impl SignatureSpec {
 }
 
 fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Rc<ClassMetadata>> {
-    let key = obj.get_type().as_ptr() as usize;
-    if let Some(metadata) = CLASS_CACHE.with(|cache| cache.borrow().get(&key).cloned()) {
+    let type_ptr = obj.get_type().as_ptr() as usize;
+    if let Some(metadata) = CLASS_CACHE_INDEX.with(|cache| {
+        let cache = cache.borrow();
+        let cached = cache[class_metadata_cache_slot(type_ptr)].as_ref()?;
+        (cached.type_ptr == type_ptr).then(|| cached.metadata.clone())
+    }) {
         return Ok(metadata);
     }
 
-    let metadata = Rc::new(ClassMetadata::from_class(obj)?);
-    CLASS_CACHE.with(|cache| {
-        cache.borrow_mut().insert(key, metadata.clone());
+    let metadata = if let Some(metadata) =
+        CLASS_CACHE.with(|cache| cache.borrow().get(&type_ptr).cloned())
+    {
+        metadata
+    } else {
+        let metadata = Rc::new(ClassMetadata::from_class(obj)?);
+        CLASS_CACHE.with(|cache| {
+            cache.borrow_mut().insert(type_ptr, metadata.clone());
+        });
+        metadata
+    };
+    CLASS_CACHE_INDEX.with(|cache| {
+        cache.borrow_mut()[class_metadata_cache_slot(type_ptr)] =
+            Some(ClassMetadataCacheEntry {
+                type_ptr,
+                metadata: metadata.clone(),
+            });
     });
     Ok(metadata)
+}
+
+#[inline]
+fn class_metadata_cache_slot(type_ptr: usize) -> usize {
+    (type_ptr >> 4) & (CLASS_METADATA_CACHE_SLOTS - 1)
 }
 
 impl ClassMetadata {
