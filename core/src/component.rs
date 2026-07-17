@@ -509,20 +509,37 @@ fn bind_element_arguments_direct(
     }
 
     if let Some(default_attrs) = &metadata.attributes {
-        for item in default_attrs.bind(py).call_method0("items")?.try_iter()? {
-            let item = item?;
-            let pair = item.downcast::<PyTuple>()?;
-            let key: String = pair.get_item(0)?.extract()?;
-            let value = pair.get_item(1)?.unbind();
-            if let Some((_, current)) = attrs.iter_mut().find(|(name, _)| name == &key) {
-                *current = value;
-            } else {
-                attrs.push((key, value));
+        let default_attrs = default_attrs.bind(py);
+        if let Ok(default_attrs) = default_attrs.downcast::<PyDict>() {
+            for (key, value) in default_attrs.iter() {
+                merge_default_attribute(&mut attrs, key.extract()?, value.unbind());
+            }
+        } else {
+            for item in default_attrs.call_method0("items")?.try_iter()? {
+                let item = item?;
+                let pair = item.downcast::<PyTuple>()?;
+                merge_default_attribute(
+                    &mut attrs,
+                    pair.get_item(0)?.extract()?,
+                    pair.get_item(1)?.unbind(),
+                );
             }
         }
     }
 
     Ok((Args::new(), attrs, None))
+}
+
+fn merge_default_attribute(
+    attrs: &mut Vec<(String, Py<PyAny>)>,
+    key: String,
+    value: Py<PyAny>,
+) {
+    if let Some((_, current)) = attrs.iter_mut().find(|(name, _)| name == &key) {
+        *current = value;
+    } else {
+        attrs.push((key, value));
+    }
 }
 
 fn can_parse_direct_html_class(value: &Bound<'_, PyAny>) -> bool {
