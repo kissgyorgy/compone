@@ -172,14 +172,19 @@ pub fn escape_str(value: &str) -> String {
 }
 
 pub fn escape_str_into(value: &str, escaped: &mut String) {
-    for char_ in value.chars() {
-        match char_ {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&#34;"),
-            '\'' => escaped.push_str("&#39;"),
-            _ => escaped.push(char_),
-        }
+    let mut unescaped_start = 0;
+    for (index, byte) in value.bytes().enumerate() {
+        let replacement = match byte {
+            b'&' => "&amp;",
+            b'<' => "&lt;",
+            b'>' => "&gt;",
+            b'"' => "&#34;",
+            b'\'' => "&#39;",
+            _ => continue,
+        };
+        escaped.push_str(&value[unescaped_start..index]);
+        escaped.push_str(replacement);
+        unescaped_start = index + 1;
     }
+    escaped.push_str(&value[unescaped_start..]);
 }
