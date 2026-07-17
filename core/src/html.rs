@@ -102,7 +102,7 @@ pub fn render_attributes_from_pairs(
             rendered.push(' ');
             render_attribute_key_into(raw_key, &mut rendered);
             rendered.push_str("=\"");
-            render_attribute_sequence(values.iter(), &mut rendered)?;
+            render_attribute_sequence(py, values.iter(), &mut rendered)?;
             rendered.push('"');
             continue;
         }
@@ -112,7 +112,7 @@ pub fn render_attributes_from_pairs(
             rendered.push(' ');
             render_attribute_key_into(raw_key, &mut rendered);
             rendered.push_str("=\"");
-            render_attribute_sequence(values.iter(), &mut rendered)?;
+            render_attribute_sequence(py, values.iter(), &mut rendered)?;
             rendered.push('"');
             continue;
         }
@@ -131,6 +131,7 @@ pub fn render_attributes_from_pairs(
 }
 
 fn render_attribute_sequence<'py>(
+    py: Python<'py>,
     values: impl Iterator<Item = Bound<'py, PyAny>>,
     rendered: &mut String,
 ) -> PyResult<()> {
@@ -141,7 +142,13 @@ fn render_attribute_sequence<'py>(
         } else {
             rendered.push(' ');
         }
-        escape_str_into(&item.str()?.to_string_lossy(), rendered);
+        if item.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+            // SAFETY: The exact type pointer was checked above.
+            let item = unsafe { item.downcast_unchecked::<PyString>() };
+            escape_str_into(&item.to_string_lossy(), rendered);
+        } else {
+            escape_str_into(&item.str()?.to_string_lossy(), rendered);
+        }
     }
     Ok(())
 }
