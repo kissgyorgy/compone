@@ -1789,7 +1789,17 @@ fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyR
     let py = obj.py();
     let error_message = "List element children must be <li>";
     for child in children {
-        let rendered = child.bind(py).str()?.to_string_lossy().trim().to_string();
+        let child = child.bind(py);
+        if let Ok(component) = child.downcast::<RustComponent>() {
+            let component = component.borrow();
+            if component.kind == ComponentKind::Element
+                && component.name.as_deref() == Some("li")
+            {
+                continue;
+            }
+        }
+
+        let rendered = child.str()?.to_string_lossy().trim().to_string();
         if !(rendered.starts_with("<li") && rendered.ends_with("</li>")) {
             return Err(PyAssertionError::new_err(error_message));
         }
