@@ -1860,28 +1860,48 @@ fn render_children(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     safe_from_string(py, rendered)
 }
 
+enum ChildSnapshot {
+    One(Py<PyAny>),
+    Many(Vec<Py<PyAny>>),
+}
+
 fn render_children_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
     let children = {
         let borrowed = slf.borrow();
-        if borrowed.children.is_empty() {
-            return Ok(String::new());
+        match borrowed.children.as_slice() {
+            [] => return Ok(String::new()),
+            [one] => ChildSnapshot::One(one.clone_ref(py)),
+            _ => ChildSnapshot::Many(clone_py_vec(py, &borrowed.children)),
         }
-        clone_py_vec(py, &borrowed.children)
     };
     let mut rendered = String::new();
-    for child in children {
-        let child = child.bind(py);
-        if child.is_none() {
-            continue;
-        }
-        if child.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
-            escape_str_into(&child.downcast::<PyString>()?.to_string_lossy(), &mut rendered);
-        } else {
-            rendered.push_str(&render_value_to_string(child)?);
+    match children {
+        ChildSnapshot::One(one) => render_child_into(py, &one, &mut rendered)?,
+        ChildSnapshot::Many(children) => {
+            for child in children {
+                render_child_into(py, &child, &mut rendered)?;
+            }
         }
     }
     Ok(rendered)
+}
+
+fn render_child_into(
+    py: Python<'_>,
+    child: &Py<PyAny>,
+    rendered: &mut String,
+) -> PyResult<()> {
+    let child = child.bind(py);
+    if child.is_none() {
+        return Ok(());
+    }
+    if child.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+        escape_str_into(&child.downcast::<PyString>()?.to_string_lossy(), rendered);
+    } else {
+        rendered.push_str(&render_value_to_string(child)?);
+    }
+    Ok(())
 }
 
 fn render_value_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
