@@ -1060,57 +1060,38 @@ fn bind_arguments_without_kwargs(
     signature: &SignatureSpec,
     args: &Bound<'_, PyTuple>,
 ) -> PyResult<BoundState> {
-    let mut assigned: Vec<Option<Py<PyAny>>> = signature.params.iter().map(|_| None).collect();
-    let positional_indices: Vec<usize> = signature
-        .params
-        .iter()
-        .enumerate()
-        .filter_map(|(index, param)| {
-            matches!(param.kind, ParamKind::PosOnly | ParamKind::PosOrKw).then_some(index)
-        })
-        .collect();
-
-    if args.len() > positional_indices.len() {
+    if args.len() > signature.positional_args.len() {
         return Err(PyTypeError::new_err("too many positional arguments"));
     }
 
-    for (arg_index, value) in args.iter().enumerate() {
-        assigned[positional_indices[arg_index]] = Some(value.clone().unbind());
-    }
-
-    for (index, param) in signature.params.iter().enumerate() {
-        if param.kind == ParamKind::VarKw {
-            continue;
-        }
-
-        if assigned[index].is_none() {
-            if let Some(default) = &param.default {
-                assigned[index] = Some(default.clone_ref(py));
-            } else {
-                return Err(PyTypeError::new_err(format!(
-                    "missing a required argument: '{}'",
-                    param.name
-                )));
-            }
-        }
-    }
-
-    let mut bound_args = Vec::new();
+    let mut arg_index = 0;
+    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
     let mut bound_kwargs = Vec::new();
-
-    for (index, param) in signature.params.iter().enumerate() {
+    for param in &signature.params {
         match param.kind {
             ParamKind::PosOnly | ParamKind::PosOrKw => {
-                let value = assigned[index]
-                    .take()
-                    .expect("positional argument must be assigned");
+                let value = if arg_index < args.len() {
+                    let value = args.get_item(arg_index)?.unbind();
+                    arg_index += 1;
+                    value
+                } else if let Some(default) = &param.default {
+                    default.clone_ref(py)
+                } else {
+                    return Err(PyTypeError::new_err(format!(
+                        "missing a required argument: '{}'",
+                        param.name
+                    )));
+                };
                 bound_args.push(value);
             }
             ParamKind::KwOnly => {
-                let value = assigned[index]
-                    .take()
-                    .expect("keyword-only argument must be assigned");
-                bound_kwargs.push((param.name.clone(), value));
+                let value = param.default.as_ref().ok_or_else(|| {
+                    PyTypeError::new_err(format!(
+                        "missing a required argument: '{}'",
+                        param.name
+                    ))
+                })?;
+                bound_kwargs.push((param.name.clone(), value.clone_ref(py)));
             }
             ParamKind::VarKw => {}
         }
