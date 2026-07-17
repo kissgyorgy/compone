@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -646,12 +645,107 @@ struct RenderedCacheEntry {
     safe: Py<PyAny>,
 }
 
-#[derive(Hash, PartialEq, Eq)]
 struct RenderCacheKey {
+    fingerprint: u64,
     type_ptr: usize,
     args: Vec<CacheValue>,
     kwargs: Vec<(String, CacheValue)>,
     children: Vec<CacheValue>,
+}
+
+impl RenderCacheKey {
+    fn new(
+        type_ptr: usize,
+        args: Vec<CacheValue>,
+        kwargs: Vec<(String, CacheValue)>,
+        children: Vec<CacheValue>,
+    ) -> Self {
+        let mut hasher = CacheKeyHasher::default();
+        type_ptr.hash(&mut hasher);
+        args.hash(&mut hasher);
+        kwargs.hash(&mut hasher);
+        children.hash(&mut hasher);
+        Self {
+            fingerprint: hasher.finish(),
+            type_ptr,
+            args,
+            kwargs,
+            children,
+        }
+    }
+}
+
+impl PartialEq for RenderCacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.fingerprint == other.fingerprint
+            && self.type_ptr == other.type_ptr
+            && self.args == other.args
+            && self.kwargs == other.kwargs
+            && self.children == other.children
+    }
+}
+
+impl Eq for RenderCacheKey {}
+
+impl Hash for RenderCacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fingerprint.hash(state);
+    }
+}
+
+struct CacheKeyHasher(u64);
+
+impl Default for CacheKeyHasher {
+    fn default() -> Self {
+        Self(0x517c_c1b7_2722_0a95)
+    }
+}
+
+impl CacheKeyHasher {
+    #[inline]
+    fn mix(&mut self, value: u64) {
+        self.0 = (self.0.rotate_left(7) ^ value).wrapping_mul(0x9e37_79b1_85eb_ca87);
+    }
+}
+
+impl Hasher for CacheKeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.mix(u64::from_ne_bytes(
+                chunk.try_into().expect("chunk must contain eight bytes"),
+            ));
+        }
+        let remainder = chunks.remainder();
+        if !remainder.is_empty() {
+            let mut value = 0_u64;
+            for (index, byte) in remainder.iter().enumerate() {
+                value |= u64::from(*byte) << (index * 8);
+            }
+            self.mix(value);
+        }
+        self.mix(bytes.len() as u64);
+    }
+
+    fn write_u8(&mut self, value: u8) {
+        self.mix(u64::from(value));
+    }
+
+    fn write_i64(&mut self, value: i64) {
+        self.mix(value as u64);
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.mix(value);
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.mix(value as u64);
+    }
 }
 
 enum CacheValue {
@@ -1239,9 +1333,7 @@ fn render_cache_get_string(key: &RenderCacheKey) -> Option<String> {
 }
 
 fn render_cache_should_store(key: &RenderCacheKey) -> bool {
-    let mut hasher = DefaultHasher::new();
-    key.hash(&mut hasher);
-    let fingerprint = hasher.finish();
+    let fingerprint = key.fingerprint;
     RENDER_CACHE_ADMISSIONS.with(|admissions| {
         let mut admissions = admissions.borrow_mut();
         if admissions.contains(&fingerprint) {
@@ -1316,12 +1408,12 @@ fn component_cache_key(
         keyed_children.push(key);
     }
 
-    Ok(Some(RenderCacheKey {
+    Ok(Some(RenderCacheKey::new(
         type_ptr,
-        args: keyed_args,
-        kwargs: keyed_kwargs,
-        children: keyed_children,
-    }))
+        keyed_args,
+        keyed_kwargs,
+        keyed_children,
+    )))
 }
 
 impl RenderCacheKeyBuilder {
