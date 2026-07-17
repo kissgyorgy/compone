@@ -424,9 +424,7 @@ fn can_bind_element_arguments_direct(
     metadata: &ClassMetadata,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<bool> {
-    if !matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void)
-        || metadata.attributes.is_some()
-    {
+    if !matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void) {
         return Ok(false);
     }
 
@@ -474,6 +472,20 @@ fn bind_element_arguments_direct(
                 value.unbind()
             };
             attrs.push((key, value));
+        }
+    }
+
+    if let Some(default_attrs) = &metadata.attributes {
+        for item in default_attrs.bind(py).call_method0("items")?.try_iter()? {
+            let item = item?;
+            let pair = item.downcast::<PyTuple>()?;
+            let key: String = pair.get_item(0)?.extract()?;
+            let value = pair.get_item(1)?.unbind();
+            if let Some((_, current)) = attrs.iter_mut().find(|(name, _)| name == &key) {
+                *current = value;
+            } else {
+                attrs.push((key, value));
+            }
         }
     }
 
