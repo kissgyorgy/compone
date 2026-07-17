@@ -110,6 +110,13 @@ pub fn escape_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
 pub fn escape_value(value: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let py = value.py();
     let safe = safe_class(py)?;
+    if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+        // SAFETY: The exact type pointer was checked above.
+        let string = unsafe { value.downcast_unchecked::<PyString>() };
+        return safe
+            .call1((escape_str(&string.to_string_lossy()),))
+            .map(Bound::unbind);
+    }
     if value.is_instance(&safe)? {
         return Ok(value.clone().unbind());
     }
