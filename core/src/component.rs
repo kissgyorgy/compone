@@ -19,6 +19,7 @@ const MAX_RENDER_CACHE_ENTRIES: usize = 4096;
 const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
 const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
 const CLASS_METADATA_CACHE_SLOTS: usize = 256;
+const EMPTY_RENDER_CACHE_SLOTS: usize = 256;
 const LAST_RENDER_CACHE_SLOTS: usize = 256;
 
 type Args = SmallVec<[Py<PyAny>; 4]>;
@@ -27,6 +28,11 @@ type Children = SmallVec<[Py<PyAny>; 4]>;
 struct ClassMetadataCacheEntry {
     type_ptr: usize,
     metadata: Rc<ClassMetadata>,
+}
+
+struct EmptyRenderedCacheEntry {
+    type_ptr: usize,
+    safe: Py<PyAny>,
 }
 
 struct LastRenderedCacheEntry {
@@ -42,6 +48,9 @@ thread_local! {
     static CLASS_CACHE_INDEX: RefCell<Vec<Option<ClassMetadataCacheEntry>>> = RefCell::new(
         (0..CLASS_METADATA_CACHE_SLOTS).map(|_| None).collect()
     );
+    static EMPTY_RENDER_CACHE: RefCell<Vec<Option<EmptyRenderedCacheEntry>>> = RefCell::new(
+        (0..EMPTY_RENDER_CACHE_SLOTS).map(|_| None).collect()
+    );
     static RENDER_CACHE: RefCell<HashMap<Rc<RenderCacheKey>, Rc<RenderedCacheEntry>>> = RefCell::new(HashMap::new());
     static LAST_RENDER_CACHE: RefCell<Vec<Option<LastRenderedCacheEntry>>> = RefCell::new(
         (0..LAST_RENDER_CACHE_SLOTS).map(|_| None).collect()
@@ -53,6 +62,11 @@ pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     PARENT_STACK.with(|stack| stack.borrow_mut().clear());
     CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
     CLASS_CACHE_INDEX.with(|cache| {
+        for entry in cache.borrow_mut().iter_mut() {
+            *entry = None;
+        }
+    });
+    EMPTY_RENDER_CACHE.with(|cache| {
         for entry in cache.borrow_mut().iter_mut() {
             *entry = None;
         }
@@ -1360,6 +1374,11 @@ fn keyword_check_target<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyA
 fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
     let kind = { slf.borrow().kind };
+    if matches!(kind, ComponentKind::Element | ComponentKind::Void) {
+        if let Some(cached) = empty_render_cache_get(py, slf, kind)? {
+            return Ok(cached);
+        }
+    }
     if kind == ComponentKind::Func {
         if let Some(cached) = render_last_cache_get_safe(py, slf)? {
             return Ok(cached);
@@ -1380,6 +1399,44 @@ fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
     let rendered = render_instance_to_string_uncached(slf, kind)?;
     safe_from_string(py, rendered)
+}
+
+fn empty_render_cache_get(
+    py: Python<'_>,
+    slf: &Bound<'_, RustComponent>,
+    kind: ComponentKind,
+) -> PyResult<Option<Py<PyAny>>> {
+    {
+        let borrowed = slf.borrow();
+        if !borrowed.kwargs.is_empty() || !borrowed.children.is_empty() {
+            return Ok(None);
+        }
+    }
+
+    let type_ptr = slf.as_any().get_type().as_ptr() as usize;
+    if let Some(cached) = EMPTY_RENDER_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        let cached = cache[empty_render_cache_slot(type_ptr)].as_ref()?;
+        (cached.type_ptr == type_ptr).then(|| cached.safe.clone_ref(py))
+    }) {
+        return Ok(Some(cached));
+    }
+
+    let rendered = render_instance_to_string_uncached(slf, kind)?;
+    let safe = safe_from_string(py, rendered)?;
+    EMPTY_RENDER_CACHE.with(|cache| {
+        cache.borrow_mut()[empty_render_cache_slot(type_ptr)] =
+            Some(EmptyRenderedCacheEntry {
+                type_ptr,
+                safe: safe.clone_ref(py),
+            });
+    });
+    Ok(Some(safe))
+}
+
+#[inline]
+fn empty_render_cache_slot(type_ptr: usize) -> usize {
+    (type_ptr >> 4) & (EMPTY_RENDER_CACHE_SLOTS - 1)
 }
 
 fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
