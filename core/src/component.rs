@@ -1899,7 +1899,9 @@ fn render_element_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> 
             .name
             .clone()
             .expect("initialized element must have a name");
-        if simple_attribute_values(py, &borrowed.kwargs) {
+        if borrowed.kwargs.is_empty() {
+            (name, String::new())
+        } else if simple_attribute_values(py, &borrowed.kwargs) {
             let attributes = render_attributes_from_pairs(py, &borrowed.kwargs)?;
             (name, attributes)
         } else {
@@ -1922,7 +1924,9 @@ fn render_void_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
             .name
             .clone()
             .expect("initialized void element must have a name");
-        if simple_attribute_values(py, &borrowed.kwargs) {
+        if borrowed.kwargs.is_empty() {
+            (name, String::new())
+        } else if simple_attribute_values(py, &borrowed.kwargs) {
             let attributes = render_attributes_from_pairs(py, &borrowed.kwargs)?;
             (name, attributes)
         } else {
