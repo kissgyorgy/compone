@@ -519,8 +519,7 @@ fn parse_direct_html_class(
     value: &Bound<'_, PyAny>,
 ) -> PyResult<Option<Py<PyAny>>> {
     let mut parsed = Vec::new();
-    let mut seen = HashSet::new();
-    collect_direct_html_classes(value, &mut parsed, &mut seen)?;
+    collect_direct_html_classes(value, &mut parsed)?;
     if parsed.is_empty() {
         return Ok(None);
     }
@@ -530,27 +529,30 @@ fn parse_direct_html_class(
 fn collect_direct_html_classes(
     value: &Bound<'_, PyAny>,
     parsed: &mut Vec<String>,
-    seen: &mut HashSet<String>,
 ) -> PyResult<()> {
-    if value.is_none() || !value.is_truthy()? {
+    if value.is_none() {
         return Ok(());
     }
 
     if let Ok(string) = value.downcast::<PyString>() {
-        push_class_pieces(&string.to_string_lossy(), parsed, seen);
+        push_class_pieces(&string.to_string_lossy(), parsed);
+        return Ok(());
+    }
+
+    if !value.is_truthy()? {
         return Ok(());
     }
 
     if let Ok(tuple) = value.downcast::<PyTuple>() {
         for item in tuple.iter() {
-            collect_direct_html_classes(&item, parsed, seen)?;
+            collect_direct_html_classes(&item, parsed)?;
         }
         return Ok(());
     }
 
     if let Ok(list) = value.downcast::<PyList>() {
         for item in list.iter() {
-            collect_direct_html_classes(&item, parsed, seen)?;
+            collect_direct_html_classes(&item, parsed)?;
         }
         return Ok(());
     }
@@ -559,9 +561,10 @@ fn collect_direct_html_classes(
         for (class_name, enabled) in dict.iter() {
             if enabled.is_truthy()? {
                 let class_name = class_name.downcast::<PyString>()?;
-                let class_name = class_name.to_string_lossy().trim().to_string();
-                if !class_name.is_empty() && seen.insert(class_name.clone()) {
-                    parsed.push(class_name);
+                let class_name = class_name.to_string_lossy();
+                let class_name = class_name.trim();
+                if !class_name.is_empty() && !parsed.iter().any(|item| item == class_name) {
+                    parsed.push(class_name.to_owned());
                 }
             }
         }
@@ -570,11 +573,10 @@ fn collect_direct_html_classes(
     Ok(())
 }
 
-fn push_class_pieces(value: &str, parsed: &mut Vec<String>, seen: &mut HashSet<String>) {
+fn push_class_pieces(value: &str, parsed: &mut Vec<String>) {
     for piece in value.split_whitespace() {
-        let stripped = piece.trim();
-        if !stripped.is_empty() && seen.insert(stripped.to_string()) {
-            parsed.push(stripped.to_string());
+        if !parsed.iter().any(|item| item == piece) {
+            parsed.push(piece.to_owned());
         }
     }
 }
