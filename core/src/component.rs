@@ -17,11 +17,21 @@ use crate::utils::is_python_keyword;
 const MAX_RENDER_CACHE_ENTRIES: usize = 4096;
 const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
 const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
+const LAST_RENDER_CACHE_SLOTS: usize = 256;
+
+struct LastRenderedCacheEntry {
+    type_ptr: usize,
+    key: Rc<RenderCacheKey>,
+    entry: Rc<RenderedCacheEntry>,
+}
 
 thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
     static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
-    static RENDER_CACHE: RefCell<HashMap<RenderCacheKey, RenderedCacheEntry>> = RefCell::new(HashMap::new());
+    static RENDER_CACHE: RefCell<HashMap<Rc<RenderCacheKey>, Rc<RenderedCacheEntry>>> = RefCell::new(HashMap::new());
+    static LAST_RENDER_CACHE: RefCell<Vec<Option<LastRenderedCacheEntry>>> = RefCell::new(
+        (0..LAST_RENDER_CACHE_SLOTS).map(|_| None).collect()
+    );
     static RENDER_CACHE_ADMISSIONS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
@@ -29,6 +39,11 @@ pub fn init_context_var(_py: Python<'_>) -> PyResult<()> {
     PARENT_STACK.with(|stack| stack.borrow_mut().clear());
     CLASS_CACHE.with(|cache| cache.borrow_mut().clear());
     RENDER_CACHE.with(|cache| cache.borrow_mut().clear());
+    LAST_RENDER_CACHE.with(|cache| {
+        for entry in cache.borrow_mut().iter_mut() {
+            *entry = None;
+        }
+    });
     RENDER_CACHE_ADMISSIONS.with(|cache| cache.borrow_mut().clear());
     Ok(())
 }
@@ -1264,6 +1279,9 @@ fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
     let kind = { slf.borrow().kind };
     if kind == ComponentKind::Func {
+        if let Some(cached) = render_last_cache_get_safe(py, slf)? {
+            return Ok(cached);
+        }
         if let Some(key) = render_cache_key(slf)? {
             if let Some(cached) = render_cache_get_safe(py, &key) {
                 return Ok(cached);
@@ -1286,6 +1304,9 @@ fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String>
     let py = slf.py();
     let kind = { slf.borrow().kind };
     if kind == ComponentKind::Func {
+        if let Some(cached) = render_last_cache_get_string(slf)? {
+            return Ok(cached);
+        }
         if let Some(key) = render_cache_key(slf)? {
             if let Some(cached) = render_cache_get_string(&key) {
                 return Ok(cached);
@@ -1351,19 +1372,214 @@ fn render_cache_set(
     rendered: String,
     safe: &Py<PyAny>,
 ) {
-    RENDER_CACHE.with(|cache| {
+    let type_ptr = key.type_ptr;
+    let key = Rc::new(key);
+    let entry = Rc::new(RenderedCacheEntry {
+        rendered,
+        safe: safe.clone_ref(py),
+    });
+    let cleared = RENDER_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
-        if cache.len() >= MAX_RENDER_CACHE_ENTRIES {
+        let cleared = cache.len() >= MAX_RENDER_CACHE_ENTRIES;
+        if cleared {
             cache.clear();
         }
-        cache.insert(
-            key,
-            RenderedCacheEntry {
-                rendered,
-                safe: safe.clone_ref(py),
-            },
-        );
+        cache.insert(key.clone(), entry.clone());
+        cleared
     });
+    LAST_RENDER_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cleared {
+            for entry in cache.iter_mut() {
+                *entry = None;
+            }
+        }
+        cache[last_render_cache_slot(type_ptr)] = Some(LastRenderedCacheEntry {
+            type_ptr,
+            key,
+            entry,
+        });
+    });
+}
+
+fn render_last_cache_get_safe(
+    py: Python<'_>,
+    slf: &Bound<'_, RustComponent>,
+) -> PyResult<Option<Py<PyAny>>> {
+    Ok(render_last_cache_entry(slf)?.map(|entry| entry.safe.clone_ref(py)))
+}
+
+fn render_last_cache_get_string(slf: &Bound<'_, RustComponent>) -> PyResult<Option<String>> {
+    Ok(render_last_cache_entry(slf)?.map(|entry| entry.rendered.clone()))
+}
+
+fn render_last_cache_entry(
+    slf: &Bound<'_, RustComponent>,
+) -> PyResult<Option<Rc<RenderedCacheEntry>>> {
+    let type_ptr = slf.as_any().get_type().as_ptr() as usize;
+    let cached = LAST_RENDER_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        let cached = cache[last_render_cache_slot(type_ptr)].as_ref()?;
+        if cached.type_ptr != type_ptr {
+            return None;
+        }
+        Some((cached.key.clone(), cached.entry.clone()))
+    });
+    let Some((key, entry)) = cached else {
+        return Ok(None);
+    };
+    if component_matches_cache_key(slf, &key, MAX_RENDER_CACHE_KEY_DEPTH)? {
+        Ok(Some(entry))
+    } else {
+        Ok(None)
+    }
+}
+
+#[inline]
+fn last_render_cache_slot(type_ptr: usize) -> usize {
+    (type_ptr >> 4) & (LAST_RENDER_CACHE_SLOTS - 1)
+}
+
+fn component_matches_cache_key(
+    slf: &Bound<'_, RustComponent>,
+    key: &RenderCacheKey,
+    depth: usize,
+) -> PyResult<bool> {
+    if depth == 0 || slf.as_any().get_type().as_ptr() as usize != key.type_ptr {
+        return Ok(false);
+    }
+
+    let py = slf.py();
+    let borrowed = slf.borrow();
+    if borrowed.args.len() != key.args.len()
+        || borrowed.kwargs.len() != key.kwargs.len()
+        || borrowed.children.len() != key.children.len()
+    {
+        return Ok(false);
+    }
+    for (cached, value) in key.args.iter().zip(&borrowed.args) {
+        if !value_matches_cache_value(cached, value.bind(py), depth)? {
+            return Ok(false);
+        }
+    }
+    for ((cached_name, cached), (name, value)) in key.kwargs.iter().zip(&borrowed.kwargs) {
+        if cached_name != name || !value_matches_cache_value(cached, value.bind(py), depth)? {
+            return Ok(false);
+        }
+    }
+    for (cached, value) in key.children.iter().zip(&borrowed.children) {
+        if !value_matches_cache_value(cached, value.bind(py), depth)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn value_matches_cache_value(
+    cached: &CacheValue,
+    value: &Bound<'_, PyAny>,
+    depth: usize,
+) -> PyResult<bool> {
+    if depth == 0 {
+        return Ok(false);
+    }
+
+    let py = value.py();
+    match cached {
+        CacheValue::None => Ok(value.is_none()),
+        CacheValue::Bool(cached_bool) => match value.downcast::<PyBool>() {
+            Ok(value_bool) => Ok(value_bool.extract::<bool>()? == *cached_bool),
+            Err(_) => Ok(false),
+        },
+        CacheValue::Identity { ptr, .. } => Ok(value.as_ptr() as usize == *ptr),
+        CacheValue::Str(cached_string) | CacheValue::SafeStr(cached_string) => {
+            if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+                return Ok(false);
+            }
+            let Ok(value_string) = value.downcast::<PyString>() else {
+                return Ok(false);
+            };
+            let safe = is_safe_or_markup_value(py, value)?;
+            let expected_safe = matches!(cached, CacheValue::SafeStr(_));
+            Ok(safe == expected_safe && value_string.to_string_lossy() == cached_string.as_str())
+        }
+        CacheValue::Int64(cached_int) => {
+            if value.get_type().as_ptr() == py.get_type::<PyInt>().as_ptr() {
+                return Ok(false);
+            }
+            match value.downcast::<PyInt>() {
+                Ok(value_int) => Ok(value_int.extract::<i64>().ok() == Some(*cached_int)),
+                Err(_) => Ok(false),
+            }
+        }
+        CacheValue::Int(cached_int) => {
+            if value.get_type().as_ptr() == py.get_type::<PyInt>().as_ptr() {
+                return Ok(false);
+            }
+            match value.downcast::<PyInt>() {
+                Ok(value_int) => Ok(value_int.str()?.to_string_lossy() == cached_int.as_str()),
+                Err(_) => Ok(false),
+            }
+        }
+        CacheValue::Float(cached_float) => {
+            if value.get_type().as_ptr() == py.get_type::<PyFloat>().as_ptr()
+                || value.downcast::<PyFloat>().is_err()
+            {
+                return Ok(false);
+            }
+            Ok(value.repr()?.to_string_lossy() == cached_float.as_str())
+        }
+        CacheValue::Component(cached_component) => {
+            let Ok(component) = value.downcast::<RustComponent>() else {
+                return Ok(false);
+            };
+            component_matches_cache_key(component, cached_component, depth - 1)
+        }
+        CacheValue::Tuple(cached_items) => {
+            let Ok(tuple) = value.downcast::<PyTuple>() else {
+                return Ok(false);
+            };
+            sequence_matches_cache_values(cached_items, tuple.iter(), depth)
+        }
+        CacheValue::List(cached_items) => {
+            let Ok(list) = value.downcast::<PyList>() else {
+                return Ok(false);
+            };
+            sequence_matches_cache_values(cached_items, list.iter(), depth)
+        }
+        CacheValue::Dict(cached_items) => {
+            let Ok(dict) = value.downcast::<PyDict>() else {
+                return Ok(false);
+            };
+            if cached_items.len() != dict.len() {
+                return Ok(false);
+            }
+            for ((cached_key, cached_value), (key, value)) in cached_items.iter().zip(dict.iter()) {
+                if !value_matches_cache_value(cached_key, &key, depth - 1)?
+                    || !value_matches_cache_value(cached_value, &value, depth - 1)?
+                {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+    }
+}
+
+fn sequence_matches_cache_values<'py>(
+    cached: &[CacheValue],
+    values: impl ExactSizeIterator<Item = Bound<'py, PyAny>>,
+    depth: usize,
+) -> PyResult<bool> {
+    if cached.len() != values.len() {
+        return Ok(false);
+    }
+    for (cached, value) in cached.iter().zip(values) {
+        if !value_matches_cache_value(cached, &value, depth - 1)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn render_cache_key(slf: &Bound<'_, RustComponent>) -> PyResult<Option<RenderCacheKey>> {
