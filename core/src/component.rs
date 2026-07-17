@@ -27,7 +27,7 @@ type Children = SmallVec<[Py<PyAny>; 4]>;
 
 struct ClassMetadataCacheEntry {
     type_ptr: usize,
-    metadata: Rc<ClassMetadata>,
+    metadata: Arc<ClassMetadata>,
 }
 
 struct EmptyRenderedCacheEntry {
@@ -44,7 +44,7 @@ struct LastRenderedCacheEntry {
 
 thread_local! {
     static PARENT_STACK: RefCell<Vec<Py<PyAny>>> = const { RefCell::new(Vec::new()) };
-    static CLASS_CACHE: RefCell<HashMap<usize, Rc<ClassMetadata>>> = RefCell::new(HashMap::new());
+    static CLASS_CACHE: RefCell<HashMap<usize, Arc<ClassMetadata>>> = RefCell::new(HashMap::new());
     static CLASS_CACHE_INDEX: RefCell<Vec<Option<ClassMetadataCacheEntry>>> = RefCell::new(
         (0..CLASS_METADATA_CACHE_SLOTS).map(|_| None).collect()
     );
@@ -113,15 +113,15 @@ pub struct RustComponent {
     original_kwargs: Option<Vec<(String, Py<PyAny>)>>,
     parent: Option<Py<PyAny>>,
     user_instance: Option<Py<PyAny>>,
-    kind: ComponentKind,
-    name: Option<Arc<str>>,
-    html: bool,
-    list_only: bool,
-    pass_children: bool,
-    children_positional_index: Option<usize>,
-    positional_args: Option<Arc<[String]>>,
-    func: Option<Py<PyAny>>,
-    user_class: Option<Py<PyAny>>,
+    metadata: Option<Arc<ClassMetadata>>,
+}
+
+impl RustComponent {
+    fn metadata(&self) -> &ClassMetadata {
+        self.metadata
+            .as_deref()
+            .expect("initialized component must have class metadata")
+    }
 }
 
 #[pymethods]
@@ -137,15 +137,7 @@ impl RustComponent {
             original_kwargs: None,
             parent: None,
             user_instance: None,
-            kind: ComponentKind::Unknown,
-            name: None,
-            html: false,
-            list_only: false,
-            pass_children: false,
-            children_positional_index: None,
-            positional_args: None,
-            func: None,
-            user_class: None,
+            metadata: None,
         }
     }
 
@@ -202,7 +194,12 @@ impl RustComponent {
         let borrowed = slf.borrow();
         match &borrowed.original_kwargs {
             Some(kwargs) => Ok(dict_from_string_items(py, kwargs)?.unbind().into_any()),
-            None if matches!(borrowed.kind, ComponentKind::Element | ComponentKind::Void) => {
+            None
+                if matches!(
+                    borrowed.metadata().kind,
+                    ComponentKind::Element | ComponentKind::Void
+                ) =>
+            {
                 Ok(dict_from_string_items(py, &borrowed.kwargs)?.unbind().into_any())
             }
             None => Ok(py.None()),
@@ -379,11 +376,11 @@ impl RustComponent {
         }
 
         let other_component = other.downcast::<RustComponent>()?;
-        let result = if slf.borrow().kind == ComponentKind::Void
-            && other_component.borrow().kind == ComponentKind::Void
+        let result = if slf.borrow().metadata().kind == ComponentKind::Void
+            && other_component.borrow().metadata().kind == ComponentKind::Void
         {
-            let self_name = slf.borrow().name.clone();
-            let other_name = other_component.borrow().name.clone();
+            let self_name = slf.borrow().metadata().name.clone();
+            let other_name = other_component.borrow().metadata().name.clone();
             let self_kwargs = RustComponent::_original_kwargs(slf.clone())?
                 .bind(other.py())
                 .clone();
@@ -469,18 +466,7 @@ fn initialize_instance(
     borrowed.original_kwargs = original_kwargs;
     borrowed.parent = None;
     borrowed.user_instance = None;
-    borrowed.kind = metadata.kind;
-    borrowed.name = Some(metadata.name.clone());
-    borrowed.html = metadata.html;
-    borrowed.list_only = metadata.list_only;
-    borrowed.pass_children = metadata.pass_children;
-    borrowed.children_positional_index = metadata.children_positional_index;
-    borrowed.positional_args = Some(metadata.positional_args.clone());
-    borrowed.func = metadata.func.as_ref().map(|func| func.clone_ref(py));
-    borrowed.user_class = metadata
-        .user_class
-        .as_ref()
-        .map(|user_class| user_class.clone_ref(py));
+    borrowed.metadata = Some(metadata);
     Ok(())
 }
 
@@ -962,7 +948,7 @@ impl SignatureSpec {
     }
 }
 
-fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Rc<ClassMetadata>> {
+fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Arc<ClassMetadata>> {
     let type_ptr = obj.get_type().as_ptr() as usize;
     if let Some(metadata) = CLASS_CACHE_INDEX.with(|cache| {
         let cache = cache.borrow();
@@ -977,7 +963,7 @@ fn class_metadata(obj: &Bound<'_, PyAny>) -> PyResult<Rc<ClassMetadata>> {
     {
         metadata
     } else {
-        let metadata = Rc::new(ClassMetadata::from_class(obj)?);
+        let metadata = Arc::new(ClassMetadata::from_class(obj)?);
         CLASS_CACHE.with(|cache| {
             cache.borrow_mut().insert(type_ptr, metadata.clone());
         });
@@ -1373,7 +1359,7 @@ fn keyword_check_target<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyA
 
 fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
-    let kind = { slf.borrow().kind };
+    let kind = { slf.borrow().metadata().kind };
     if matches!(kind, ComponentKind::Element | ComponentKind::Void) {
         if let Some(cached) = empty_render_cache_get(py, slf, kind)? {
             return Ok(cached);
@@ -1456,7 +1442,7 @@ fn empty_render_cache_slot(type_ptr: usize) -> usize {
 
 fn render_instance_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
-    let kind = { slf.borrow().kind };
+    let kind = { slf.borrow().metadata().kind };
     if kind == ComponentKind::Func {
         if let Some(cached) = render_last_cache_get_string(slf)? {
             return Ok(cached);
@@ -1995,10 +1981,7 @@ fn render_element_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> 
     let py = slf.py();
     let (name, attributes) = {
         let borrowed = slf.borrow();
-        let name = borrowed
-            .name
-            .clone()
-            .expect("initialized element must have a name");
+        let name = borrowed.metadata().name.clone();
         if borrowed.kwargs.is_empty() {
             (name, String::new())
         } else if simple_attribute_values(py, &borrowed.kwargs) {
@@ -2020,10 +2003,7 @@ fn render_void_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
     let (name, attributes) = {
         let borrowed = slf.borrow();
-        let name = borrowed
-            .name
-            .clone()
-            .expect("initialized void element must have a name");
+        let name = borrowed.metadata().name.clone();
         if borrowed.kwargs.is_empty() {
             (name, String::new())
         } else if simple_attribute_values(py, &borrowed.kwargs) {
@@ -2100,10 +2080,13 @@ fn call_func_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let py = slf.py();
     {
         let borrowed = slf.borrow();
-        if !borrowed.pass_children && borrowed.kwargs.is_empty() {
-            let func = borrowed.func.as_ref().map(|func| func.clone_ref(py)).ok_or_else(|| {
-                PyAttributeError::new_err("function component has no callable")
-            })?;
+        let metadata = borrowed.metadata();
+        if !metadata.pass_children && borrowed.kwargs.is_empty() {
+            let func = metadata
+                .func
+                .as_ref()
+                .map(|func| func.clone_ref(py))
+                .ok_or_else(|| PyAttributeError::new_err("function component has no callable"))?;
             let args = PyTuple::new(py, borrowed.args.iter().map(|arg| arg.bind(py).clone()))?;
             drop(borrowed);
             return func.bind(py).call(&args, None).map(Bound::unbind);
@@ -2112,12 +2095,15 @@ fn call_func_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
 
     let (func, pass_children, children_positional_index, mut args, kwargs) = {
         let borrowed = slf.borrow();
+        let metadata = borrowed.metadata();
         (
-            borrowed.func.as_ref().map(|func| func.clone_ref(py)).ok_or_else(|| {
-                PyAttributeError::new_err("function component has no callable")
-            })?,
-            borrowed.pass_children,
-            borrowed.children_positional_index,
+            metadata
+                .func
+                .as_ref()
+                .map(|func| func.clone_ref(py))
+                .ok_or_else(|| PyAttributeError::new_err("function component has no callable"))?,
+            metadata.pass_children,
+            metadata.children_positional_index,
             clone_py_vec(py, &borrowed.args),
             clone_kwarg_vec(py, &borrowed.kwargs),
         )
@@ -2157,7 +2143,7 @@ fn render_func_component_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<S
 
 fn render_class_component_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String> {
     let py = slf.py();
-    let pass_children = { slf.borrow().pass_children };
+    let pass_children = { slf.borrow().metadata().pass_children };
     let user_instance = get_or_create_user_instance(slf)?;
     let content = if pass_children {
         user_instance
@@ -2191,6 +2177,7 @@ fn get_or_create_user_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<Py
         let borrowed = slf.borrow();
         (
             borrowed
+                .metadata()
                 .user_class
                 .as_ref()
                 .map(|user_class| user_class.clone_ref(py))
@@ -2207,7 +2194,11 @@ fn get_or_create_user_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<Py
 }
 
 fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyResult<()> {
-    let list_only = obj.downcast::<RustComponent>()?.borrow().list_only;
+    let list_only = obj
+        .downcast::<RustComponent>()?
+        .borrow()
+        .metadata()
+        .list_only;
     if !list_only {
         return Ok(());
     }
@@ -2218,8 +2209,8 @@ fn validate_list_children(obj: &Bound<'_, PyAny>, children: &[Py<PyAny>]) -> PyR
         let child = child.bind(py);
         if let Ok(component) = child.downcast::<RustComponent>() {
             let component = component.borrow();
-            if component.kind == ComponentKind::Element
-                && component.name.as_deref() == Some("li")
+            if component.metadata().kind == ComponentKind::Element
+                && component.metadata().name.as_ref() == "li"
             {
                 continue;
             }
@@ -2343,11 +2334,14 @@ pub fn build_props_dict<'py>(slf: &Bound<'py, RustComponent>) -> PyResult<Bound<
     let py = slf.py();
     let props = PyDict::new(py);
     let borrowed = slf.borrow();
-    if let Some(positional_args) = &borrowed.positional_args {
-        for (key, value) in positional_args.iter().zip(&borrowed.args) {
-            if !value.bind(py).is_none() {
-                props.set_item(key, value.bind(py))?;
-            }
+    for (key, value) in borrowed
+        .metadata()
+        .positional_args
+        .iter()
+        .zip(&borrowed.args)
+    {
+        if !value.bind(py).is_none() {
+            props.set_item(key, value.bind(py))?;
         }
     }
 
@@ -2392,17 +2386,14 @@ fn make_new(slf: &Bound<'_, RustComponent>, new_arguments: &Bound<'_, PyDict>) -
         (
             copy_py_vec(py, &copy_module, &borrowed.args)?,
             copy_kwarg_vec(py, &copy_module, &borrowed.kwargs)?,
-            borrowed.positional_args.clone(),
+            borrowed.metadata().positional_args.clone(),
         )
     };
 
     for (key, value) in new_arguments.iter() {
         let key: String = key.extract()?;
         let mut handled = false;
-        if let Some(index) = positional_args
-            .as_deref()
-            .and_then(|names| names.iter().position(|name| name == &key))
-        {
+        if let Some(index) = positional_args.iter().position(|name| name == &key) {
             args[index] = value.clone().unbind();
             handled = true;
         }
@@ -2410,11 +2401,7 @@ fn make_new(slf: &Bound<'_, RustComponent>, new_arguments: &Bound<'_, PyDict>) -
             *existing = value.clone().unbind();
             handled = true;
         }
-        if !handled
-            && !positional_args
-                .as_deref()
-                .is_some_and(|names| names.contains(&key))
-        {
+        if !handled && !positional_args.contains(&key) {
             kwargs.push((key, value.clone().unbind()));
         }
     }
@@ -2446,18 +2433,7 @@ fn clone_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
         .map(|kwargs| clone_kwarg_vec(py, kwargs));
     target.parent = None;
     target.user_instance = None;
-    target.kind = borrowed.kind;
-    target.name = borrowed.name.clone();
-    target.html = borrowed.html;
-    target.list_only = borrowed.list_only;
-    target.pass_children = borrowed.pass_children;
-    target.children_positional_index = borrowed.children_positional_index;
-    target.positional_args = borrowed.positional_args.clone();
-    target.func = borrowed.func.as_ref().map(|func| func.clone_ref(py));
-    target.user_class = borrowed
-        .user_class
-        .as_ref()
-        .map(|user_class| user_class.clone_ref(py));
+    target.metadata = borrowed.metadata.clone();
     drop(target);
     drop(borrowed);
 
