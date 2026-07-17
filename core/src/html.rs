@@ -3,7 +3,9 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 
 use crate::component::{empty_param_specs, empty_signature, make_dynamic_class};
-use crate::escape::{escape_str, escape_to_string, is_safe_or_markup_value, safe_from_string};
+use crate::escape::{
+    escape_str, escape_str_into, escape_to_string, is_safe_or_markup_value, safe_from_string,
+};
 use crate::utils::{classes, is_python_bool, is_python_keyword};
 
 pub fn attrs_to_dict(attrs: &Bound<'_, PyAny>, target: &Bound<'_, PyDict>) -> PyResult<()> {
@@ -31,49 +33,51 @@ pub fn render_attributes_from_pairs(
     py: Python<'_>,
     props: &[(String, Py<PyAny>)],
 ) -> PyResult<String> {
-    let mut bool_args = Vec::new();
-    let mut keyval_args = Vec::new();
+    let mut rendered = String::with_capacity(props.len() * 16);
 
     for (raw_key, raw_value) in props {
         let value = raw_value.bind(py);
-        if value.is_none() {
+        if value.is_none() || !is_python_bool(value)? {
             continue;
         }
+        if value.extract::<bool>()? {
+            rendered.push(' ');
+            render_attribute_key_into(raw_key, &mut rendered);
+        }
+    }
 
-        let escaped_key = render_attribute_key(raw_key);
-        if is_python_bool(value)? {
-            let value_bool: bool = value.extract()?;
-            if value_bool {
-                bool_args.push(escaped_key);
-            }
+    for (raw_key, raw_value) in props {
+        let value = raw_value.bind(py);
+        if value.is_none() || is_python_bool(value)? {
             continue;
         }
 
         let escaped_value = render_attribute_value(value)?;
-        let attr = if escaped_value.contains('"') {
-            format!("{escaped_key}='{escaped_value}'")
-        } else {
-            format!("{escaped_key}=\"{escaped_value}\"")
-        };
-        keyval_args.push(attr);
+        rendered.push(' ');
+        render_attribute_key_into(raw_key, &mut rendered);
+        rendered.push('=');
+        let quote = if escaped_value.contains('"') { '\'' } else { '"' };
+        rendered.push(quote);
+        rendered.push_str(&escaped_value);
+        rendered.push(quote);
     }
 
-    let bool_prefix = if bool_args.is_empty() { "" } else { " " };
-    let bool_arguments = bool_args.join(" ");
-    let keyval_prefix = if keyval_args.is_empty() { "" } else { " " };
-    let keyval_arguments = keyval_args.join(" ");
-
-    Ok(format!(
-        "{bool_prefix}{bool_arguments}{keyval_prefix}{keyval_arguments}"
-    ))
+    Ok(rendered)
 }
 
-fn render_attribute_key(raw_key: &str) -> String {
+fn render_attribute_key_into(raw_key: &str, rendered: &mut String) {
     let key = match raw_key.strip_suffix('_') {
         Some(no_underscore) if is_python_keyword(no_underscore) => no_underscore,
         _ => raw_key,
     };
-    escape_str(&key.replace('_', "-"))
+    let mut parts = key.split('_');
+    if let Some(first) = parts.next() {
+        escape_str_into(first, rendered);
+    }
+    for part in parts {
+        rendered.push('-');
+        escape_str_into(part, rendered);
+    }
 }
 
 fn render_attribute_value(value: &Bound<'_, PyAny>) -> PyResult<String> {

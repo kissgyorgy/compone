@@ -167,6 +167,11 @@ fn is_markup_value(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
 
 pub fn escape_str(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
+    escape_str_into(value, &mut escaped);
+    escaped
+}
+
+pub fn escape_str_into(value: &str, escaped: &mut String) {
     for char_ in value.chars() {
         match char_ {
             '&' => escaped.push_str("&amp;"),
@@ -177,5 +182,4 @@ pub fn escape_str(value: &str) -> String {
             _ => escaped.push(char_),
         }
     }
-    escaped
 }
