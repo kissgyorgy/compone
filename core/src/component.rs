@@ -23,6 +23,7 @@ struct LastRenderedCacheEntry {
     type_ptr: usize,
     key: Rc<RenderCacheKey>,
     entry: Rc<RenderedCacheEntry>,
+    misses: u8,
 }
 
 thread_local! {
@@ -1339,16 +1340,24 @@ fn render_instance_to_string_uncached(
 }
 
 fn render_cache_get_safe(py: Python<'_>, key: &RenderCacheKey) -> Option<Py<PyAny>> {
-    RENDER_CACHE.with(|cache| {
-        cache
-            .borrow()
-            .get(key)
-            .map(|entry| entry.safe.clone_ref(py))
-    })
+    let cached = render_cache_get_entry(key)?;
+    Some(cached.safe.clone_ref(py))
 }
 
 fn render_cache_get_string(key: &RenderCacheKey) -> Option<String> {
-    RENDER_CACHE.with(|cache| cache.borrow().get(key).map(|entry| entry.rendered.clone()))
+    let cached = render_cache_get_entry(key)?;
+    Some(cached.rendered.clone())
+}
+
+fn render_cache_get_entry(key: &RenderCacheKey) -> Option<Rc<RenderedCacheEntry>> {
+    let cached = RENDER_CACHE.with(|cache| {
+        cache
+            .borrow()
+            .get_key_value(key)
+            .map(|(key, entry)| (key.clone(), entry.clone()))
+    })?;
+    set_last_render_cache_entry(key.type_ptr, cached.0, cached.1.clone(), false);
+    Some(cached.1)
 }
 
 fn render_cache_should_store(key: &RenderCacheKey) -> bool {
@@ -1387,6 +1396,15 @@ fn render_cache_set(
         cache.insert(key.clone(), entry.clone());
         cleared
     });
+    set_last_render_cache_entry(type_ptr, key, entry, cleared);
+}
+
+fn set_last_render_cache_entry(
+    type_ptr: usize,
+    key: Rc<RenderCacheKey>,
+    entry: Rc<RenderedCacheEntry>,
+    cleared: bool,
+) {
     LAST_RENDER_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cleared {
@@ -1398,6 +1416,7 @@ fn render_cache_set(
             type_ptr,
             key,
             entry,
+            misses: 0,
         });
     });
 }
@@ -1420,7 +1439,7 @@ fn render_last_cache_entry(
     let cached = LAST_RENDER_CACHE.with(|cache| {
         let cache = cache.borrow();
         let cached = cache[last_render_cache_slot(type_ptr)].as_ref()?;
-        if cached.type_ptr != type_ptr {
+        if cached.type_ptr != type_ptr || cached.misses >= 2 {
             return None;
         }
         Some((cached.key.clone(), cached.entry.clone()))
@@ -1428,7 +1447,21 @@ fn render_last_cache_entry(
     let Some((key, entry)) = cached else {
         return Ok(None);
     };
-    if component_matches_cache_key(slf, &key, MAX_RENDER_CACHE_KEY_DEPTH)? {
+    let matches = component_matches_cache_key(slf, &key, MAX_RENDER_CACHE_KEY_DEPTH)?;
+    LAST_RENDER_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let Some(cached) = cache[last_render_cache_slot(type_ptr)].as_mut() else {
+            return;
+        };
+        if cached.type_ptr == type_ptr && Rc::ptr_eq(&cached.key, &key) {
+            cached.misses = if matches {
+                0
+            } else {
+                cached.misses.saturating_add(1)
+            };
+        }
+    });
+    if matches {
         Ok(Some(entry))
     } else {
         Ok(None)
