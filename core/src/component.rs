@@ -458,7 +458,7 @@ fn bind_element_arguments_direct(
         return Err(PyTypeError::new_err("too many positional arguments"));
     }
 
-    let mut attrs = Vec::new();
+    let mut attrs = Vec::with_capacity(kwargs.map_or(0, |kwargs| kwargs.len()));
     if let Some(kwargs) = kwargs {
         for (key, value) in kwargs.iter() {
             let key: String = key.extract()?;
@@ -474,16 +474,7 @@ fn bind_element_arguments_direct(
             } else {
                 value.unbind()
             };
-            set_direct_attr(py, &mut attrs, key, value);
-        }
-    }
-
-    if let Some(default_attrs) = &metadata.attributes {
-        for item in default_attrs.bind(py).call_method0("items")?.try_iter()? {
-            let item = item?;
-            let pair = item.downcast::<PyTuple>()?;
-            let key: String = pair.get_item(0)?.extract()?;
-            set_direct_attr(py, &mut attrs, key, pair.get_item(1)?.unbind());
+            attrs.push((key, value));
         }
     }
 
@@ -574,19 +565,6 @@ fn push_class_pieces(value: &str, parsed: &mut Vec<String>, seen: &mut HashSet<S
         if !stripped.is_empty() && seen.insert(stripped.to_string()) {
             parsed.push(stripped.to_string());
         }
-    }
-}
-
-fn set_direct_attr(
-    _py: Python<'_>,
-    attrs: &mut Vec<(String, Py<PyAny>)>,
-    key: String,
-    value: Py<PyAny>,
-) {
-    if let Some((_, existing_value)) = attrs.iter_mut().find(|(existing_key, _)| existing_key == &key) {
-        *existing_value = value;
-    } else {
-        attrs.push((key, value));
     }
 }
 
