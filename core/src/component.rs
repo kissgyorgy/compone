@@ -21,6 +21,7 @@ const MAX_RENDER_CACHE_KEY_DEPTH: usize = 16;
 const CLASS_METADATA_CACHE_SLOTS: usize = 256;
 const LAST_RENDER_CACHE_SLOTS: usize = 256;
 
+type Args = SmallVec<[Py<PyAny>; 4]>;
 type Children = SmallVec<[Py<PyAny>; 4]>;
 
 struct ClassMetadataCacheEntry {
@@ -92,7 +93,7 @@ impl ComponentKind {
 #[pyclass(name = "_ComponentBase", subclass)]
 pub struct RustComponent {
     bound_args: Option<Py<PyAny>>,
-    args: Vec<Py<PyAny>>,
+    args: Args,
     kwargs: Vec<(String, Py<PyAny>)>,
     children: Children,
     original_kwargs: Option<Vec<(String, Py<PyAny>)>>,
@@ -116,7 +117,7 @@ impl RustComponent {
     fn new(_args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>) -> Self {
         Self {
             bound_args: None,
-            args: Vec::new(),
+            args: Args::new(),
             kwargs: Vec::new(),
             children: Children::new(),
             original_kwargs: None,
@@ -479,7 +480,7 @@ fn bind_element_arguments_direct(
     args: &Bound<'_, PyTuple>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<(
-    Vec<Py<PyAny>>,
+    Args,
     Vec<(String, Py<PyAny>)>,
     Option<Vec<(String, Py<PyAny>)>>,
 )> {
@@ -521,7 +522,7 @@ fn bind_element_arguments_direct(
         }
     }
 
-    Ok((Vec::new(), attrs, None))
+    Ok((Args::new(), attrs, None))
 }
 
 fn can_parse_direct_html_class(value: &Bound<'_, PyAny>) -> bool {
@@ -1046,10 +1047,10 @@ fn extract_string_dict_items(dict: &Bound<'_, PyDict>) -> PyResult<Vec<(String, 
     Ok(items)
 }
 
-type BoundState = (Vec<Py<PyAny>>, Vec<(String, Py<PyAny>)>);
+type BoundState = (Args, Vec<(String, Py<PyAny>)>);
 
 type InitBoundState = (
-    Vec<Py<PyAny>>,
+    Args,
     Vec<(String, Py<PyAny>)>,
     Option<Vec<(String, Py<PyAny>)>>,
 );
@@ -1093,7 +1094,7 @@ fn bind_arguments_exact_keywords(
     }
 
     let mut found = 0;
-    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
+    let mut bound_args = Args::new();
     let mut bound_kwargs = Vec::with_capacity(
         signature
             .params
@@ -1151,7 +1152,7 @@ fn bind_arguments_in_keyword_order(
         return None;
     }
 
-    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
+    let mut bound_args = Args::new();
     let mut bound_kwargs = Vec::with_capacity(
         signature
             .params
@@ -1182,7 +1183,7 @@ fn bind_arguments_without_kwargs(
     }
 
     let mut arg_index = 0;
-    let mut bound_args = Vec::with_capacity(signature.positional_args.len());
+    let mut bound_args = Args::new();
     let mut bound_kwargs = Vec::new();
     for param in &signature.params {
         match param.kind {
@@ -1270,7 +1271,7 @@ fn bind_arguments_rust(
         )));
     }
 
-    let mut bound_args = Vec::new();
+    let mut bound_args = Args::new();
     let mut bound_kwargs = Vec::new();
 
     for (index, param) in signature.params.iter().enumerate() {
@@ -1292,6 +1293,10 @@ fn bind_arguments_rust(
     }
 
     Ok((bound_args, bound_kwargs))
+}
+
+fn clone_args(py: Python<'_>, values: &[Py<PyAny>]) -> Args {
+    values.iter().map(|value| value.clone_ref(py)).collect()
 }
 
 fn clone_py_vec(py: Python<'_>, values: &[Py<PyAny>]) -> Vec<Py<PyAny>> {
@@ -2360,7 +2365,7 @@ fn clone_component(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
     let borrowed = slf.borrow();
     let mut target = new_component.borrow_mut();
     target.bound_args = None;
-    target.args = clone_py_vec(py, &borrowed.args);
+    target.args = clone_args(py, &borrowed.args);
     target.kwargs = clone_kwarg_vec(py, &borrowed.kwargs);
     target.children.clear();
     target.original_kwargs = borrowed
