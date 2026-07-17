@@ -8,7 +8,9 @@ use pyo3::exceptions::{PyAssertionError, PyAttributeError, PySyntaxError, PyType
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyIterator, PyList, PyString, PyTuple, PyType};
 
-use crate::escape::{escape_to_string, is_safe_or_markup_value, safe_empty, safe_from_string};
+use crate::escape::{
+    escape_str_into, escape_to_string, is_safe_or_markup_value, safe_empty, safe_from_string,
+};
 use crate::html::{attrs_to_dict, parse_html_class, render_attributes_from_pairs};
 use crate::utils::is_python_keyword;
 
@@ -1546,7 +1548,15 @@ fn render_children_to_string(slf: &Bound<'_, RustComponent>) -> PyResult<String>
     };
     let mut rendered = String::new();
     for child in children {
-        rendered.push_str(&render_value_to_string(child.bind(py))?);
+        let child = child.bind(py);
+        if child.is_none() {
+            continue;
+        }
+        if child.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+            escape_str_into(&child.downcast::<PyString>()?.to_string_lossy(), &mut rendered);
+        } else {
+            rendered.push_str(&render_value_to_string(child)?);
+        }
     }
     Ok(rendered)
 }
