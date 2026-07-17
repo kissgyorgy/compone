@@ -31,3 +31,13 @@ def test_render_cache_observes_dict_mutations():
     data["kind"] = "result"
     data["label"] = "finished"
     assert str(DataLabel(data)) == '<span data-kind="result">finished</span>'
+
+
+def test_element_render_cache_observes_attribute_and_child_mutations():
+    element = html.Div(class_="first")["one"]
+    expected = '<div class="first">one</div>'
+    assert tuple(str(element) for _ in range(3)) == (expected,) * 3
+
+    element += "two"
+    element.props["class_"].append("second")
+    assert str(element) == '<div class="first second">onetwo</div>'

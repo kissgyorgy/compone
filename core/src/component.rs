@@ -1378,6 +1378,21 @@ fn render_instance(slf: &Bound<'_, RustComponent>) -> PyResult<Py<PyAny>> {
         if let Some(cached) = empty_render_cache_get(py, slf, kind)? {
             return Ok(cached);
         }
+        if let Some(cached) = render_last_cache_get_safe(py, slf)? {
+            return Ok(cached);
+        }
+        if let Some(key) = render_cache_key(slf)? {
+            if let Some(cached) = render_cache_get_safe(py, &key) {
+                return Ok(cached);
+            }
+
+            let rendered = render_instance_to_string_uncached(slf, kind)?;
+            let safe_rendered = safe_from_string(py, rendered.clone())?;
+            if render_cache_should_store(&key) {
+                render_cache_set(py, key, rendered, &safe_rendered);
+            }
+            return Ok(safe_rendered);
+        }
     }
     if kind == ComponentKind::Func {
         if let Some(cached) = render_last_cache_get_safe(py, slf)? {
