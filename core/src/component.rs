@@ -158,6 +158,9 @@ impl RustComponent {
         let borrowed = slf.borrow();
         match &borrowed.original_kwargs {
             Some(kwargs) => Ok(dict_from_string_items(py, kwargs)?.unbind().into_any()),
+            None if matches!(borrowed.kind, ComponentKind::Element | ComponentKind::Void) => {
+                Ok(dict_from_string_items(py, &borrowed.kwargs)?.unbind().into_any())
+            }
             None => Ok(py.None()),
         }
     }
@@ -376,7 +379,7 @@ fn initialize_instance(
         } else {
             let (args, arg_names, kwargs, arguments) =
                 bind_arguments_without_kwargs(py, &metadata.signature, args)?;
-            (args, arg_names, kwargs, arguments, Vec::new())
+            (args, arg_names, kwargs, arguments, Some(Vec::new()))
         }
     } else if let Some(kwargs_dict) = kwargs {
         if let Some(bound) = bind_arguments_exact_keywords(py, &metadata.signature, args, kwargs_dict)? {
@@ -391,14 +394,14 @@ fn initialize_instance(
                 bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
 
             let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
-            (args, arg_names, kwargs, arguments, original_kwargs)
+            (args, arg_names, kwargs, arguments, Some(original_kwargs))
         }
     } else {
         let prepared_kwargs = prepare_init_kwargs_for_metadata(py, kwargs, &metadata)?;
         let (args, arg_names, kwargs, arguments) =
             bind_arguments_rust(py, &metadata.signature, args, &prepared_kwargs)?;
         let original_kwargs = extract_string_dict_items(&prepared_kwargs)?;
-        (args, arg_names, kwargs, arguments, original_kwargs)
+        (args, arg_names, kwargs, arguments, Some(original_kwargs))
     };
 
     let mut borrowed = slf.borrow_mut();
@@ -408,7 +411,7 @@ fn initialize_instance(
     borrowed.kwargs = kwargs;
     borrowed.arguments = arguments;
     borrowed.children.clear();
-    borrowed.original_kwargs = Some(original_kwargs);
+    borrowed.original_kwargs = original_kwargs;
     borrowed.parent = None;
     borrowed.user_instance = None;
     borrowed.kind = metadata.kind;
@@ -460,7 +463,7 @@ fn bind_element_arguments_direct(
     Vec<String>,
     Vec<(String, Py<PyAny>)>,
     Vec<(String, Py<PyAny>)>,
-    Vec<(String, Py<PyAny>)>,
+    Option<Vec<(String, Py<PyAny>)>>,
 )> {
     if !args.is_empty() {
         return Err(PyTypeError::new_err("too many positional arguments"));
@@ -495,8 +498,7 @@ fn bind_element_arguments_direct(
         }
     }
 
-    let original_kwargs = clone_kwarg_vec(py, &attrs);
-    Ok((Vec::new(), Vec::new(), attrs, Vec::new(), original_kwargs))
+    Ok((Vec::new(), Vec::new(), attrs, Vec::new(), None))
 }
 
 fn can_parse_direct_html_class(value: &Bound<'_, PyAny>) -> bool {
@@ -917,7 +919,7 @@ type InitBoundState = (
     Vec<String>,
     Vec<(String, Py<PyAny>)>,
     Vec<(String, Py<PyAny>)>,
-    Vec<(String, Py<PyAny>)>,
+    Option<Vec<(String, Py<PyAny>)>>,
 );
 
 fn bind_arguments_exact_positionals(
@@ -944,7 +946,13 @@ fn bind_arguments_exact_positionals(
         arguments.push((param.name.clone(), value));
     }
 
-    Some((bound_args, arg_names, Vec::new(), arguments, Vec::new()))
+    Some((
+        bound_args,
+        arg_names,
+        Vec::new(),
+        arguments,
+        Some(Vec::new()),
+    ))
 }
 
 fn bind_arguments_exact_keywords(
@@ -1018,7 +1026,7 @@ fn bind_arguments_exact_keywords(
         arg_names,
         bound_kwargs,
         arguments,
-        original_kwargs,
+        Some(original_kwargs),
     )))
 }
 

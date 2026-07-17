@@ -1,14 +1,10 @@
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyIterator, PyString};
+use pyo3::types::{PyDict, PyIterator, PyString};
 use std::collections::HashSet;
 
 pub fn is_python_str(value: &Bound<'_, PyAny>) -> PyResult<bool> {
     Ok(value.downcast::<PyString>().is_ok())
-}
-
-pub fn is_python_bool(value: &Bound<'_, PyAny>) -> PyResult<bool> {
-    Ok(value.downcast::<PyBool>().is_ok())
 }
 
 pub fn is_python_keyword(value: &str) -> bool {

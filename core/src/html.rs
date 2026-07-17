@@ -1,12 +1,12 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 
 use crate::component::{empty_param_specs, empty_signature, make_dynamic_class};
 use crate::escape::{
     escape_str, escape_str_into, escape_to_string, is_safe_or_markup_value, safe_from_string,
 };
-use crate::utils::{classes, is_python_bool, is_python_keyword};
+use crate::utils::{classes, is_python_keyword};
 
 pub fn attrs_to_dict(attrs: &Bound<'_, PyAny>, target: &Bound<'_, PyDict>) -> PyResult<()> {
     for item in attrs.call_method0("items")?.try_iter()? {
@@ -34,21 +34,26 @@ pub fn render_attributes_from_pairs(
     props: &[(String, Py<PyAny>)],
 ) -> PyResult<String> {
     let mut rendered = String::with_capacity(props.len() * 16);
+    let has_bool = props
+        .iter()
+        .any(|(_, value)| value.bind(py).downcast::<PyBool>().is_ok());
 
-    for (raw_key, raw_value) in props {
-        let value = raw_value.bind(py);
-        if value.is_none() || !is_python_bool(value)? {
-            continue;
-        }
-        if value.extract::<bool>()? {
-            rendered.push(' ');
-            render_attribute_key_into(raw_key, &mut rendered);
+    if has_bool {
+        for (raw_key, raw_value) in props {
+            let value = raw_value.bind(py);
+            let Ok(value_bool) = value.downcast::<PyBool>() else {
+                continue;
+            };
+            if value_bool.extract::<bool>()? {
+                rendered.push(' ');
+                render_attribute_key_into(raw_key, &mut rendered);
+            }
         }
     }
 
     for (raw_key, raw_value) in props {
         let value = raw_value.bind(py);
-        if value.is_none() || is_python_bool(value)? {
+        if value.is_none() || (has_bool && value.downcast::<PyBool>().is_ok()) {
             continue;
         }
 
