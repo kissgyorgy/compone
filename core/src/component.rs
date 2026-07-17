@@ -12,7 +12,7 @@ use crate::escape::{
     escape_str_into, escape_to_string, is_safe_or_markup_value, safe_empty, safe_from_string,
 };
 use crate::html::{attrs_to_dict, parse_html_class, render_attributes_from_pairs};
-use crate::utils::is_python_keyword;
+use crate::utils::{classes, is_python_keyword};
 
 const MAX_RENDER_CACHE_ENTRIES: usize = 4096;
 const MAX_RENDER_CACHE_KEY_VALUES: usize = 512;
@@ -397,7 +397,7 @@ fn initialize_instance(
 ) -> PyResult<()> {
     let py = slf.py();
     let metadata = class_metadata(slf.as_any())?;
-    let (args, kwargs, original_kwargs) = if can_bind_element_arguments_direct(&metadata, kwargs)? {
+    let (args, kwargs, original_kwargs) = if can_bind_element_arguments_direct(&metadata) {
         bind_element_arguments_direct(py, &metadata, args, kwargs)?
     } else if kwargs.is_none() && matches!(metadata.kind, ComponentKind::Func | ComponentKind::Class) {
         if let Some(bound) = bind_arguments_exact_positionals(py, &metadata.signature, args) {
@@ -466,25 +466,8 @@ fn initialize_instance(
     Ok(())
 }
 
-fn can_bind_element_arguments_direct(
-    metadata: &ClassMetadata,
-    kwargs: Option<&Bound<'_, PyDict>>,
-) -> PyResult<bool> {
-    if !matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void) {
-        return Ok(false);
-    }
-
-    let Some(kwargs) = kwargs else {
-        return Ok(false);
-    };
-
-    if metadata.html {
-        if let Some(class_value) = kwargs.get_item("class_")? {
-            return Ok(can_parse_direct_html_class(&class_value));
-        }
-    }
-
-    Ok(true)
+fn can_bind_element_arguments_direct(metadata: &ClassMetadata) -> bool {
+    matches!(metadata.kind, ComponentKind::Element | ComponentKind::Void)
 }
 
 fn bind_element_arguments_direct(
@@ -513,7 +496,7 @@ fn bind_element_arguments_direct(
             }
 
             let value = if metadata.html && key == "class_" {
-                parse_direct_html_class(py, &value)?.unwrap_or_else(|| py.None())
+                parse_html_class_value(py, &value)?.unwrap_or_else(|| py.None())
             } else {
                 value.unbind()
             };
@@ -560,16 +543,31 @@ fn can_parse_direct_html_class(value: &Bound<'_, PyAny>) -> bool {
     false
 }
 
-fn parse_direct_html_class(
+fn parse_html_class_value(
     py: Python<'_>,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<Option<Py<PyAny>>> {
-    let mut parsed = Vec::new();
-    collect_direct_html_classes(value, &mut parsed)?;
+    let parsed = if can_parse_direct_html_class(value) {
+        let mut parsed = Vec::new();
+        collect_direct_html_classes(value, &mut parsed)?;
+        parsed
+    } else {
+        parse_dynamic_html_classes(py, value)?
+    };
     if parsed.is_empty() {
         return Ok(None);
     }
     Ok(Some(PyList::new(py, parsed)?.unbind().into_any()))
+}
+
+#[cold]
+#[inline(never)]
+fn parse_dynamic_html_classes(
+    py: Python<'_>,
+    value: &Bound<'_, PyAny>,
+) -> PyResult<Vec<String>> {
+    let args = PyTuple::new(py, [value])?;
+    classes(&args)
 }
 
 fn collect_direct_html_classes(
