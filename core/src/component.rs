@@ -1963,7 +1963,9 @@ fn render_child_into(
         return Ok(());
     }
     if child.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
-        escape_str_into(&child.downcast::<PyString>()?.to_string_lossy(), rendered);
+        // SAFETY: The exact type pointer was checked above.
+        let child = unsafe { child.downcast_unchecked::<PyString>() };
+        escape_str_into(&child.to_string_lossy(), rendered);
     } else {
         rendered.push_str(&render_value_to_string(child)?);
     }

@@ -73,7 +73,8 @@ pub fn escape_to_string(value: &Bound<'_, PyAny>) -> PyResult<String> {
     }
 
     if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
-        let string = value.downcast::<PyString>()?;
+        // SAFETY: The exact type pointer was checked above.
+        let string = unsafe { value.downcast_unchecked::<PyString>() };
         return Ok(escape_str(&string.to_string_lossy()));
     }
 
