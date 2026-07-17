@@ -57,6 +57,21 @@ pub fn render_attributes_from_pairs(
             continue;
         }
 
+        if value.get_type().as_ptr() == py.get_type::<PyString>().as_ptr() {
+            let value = value.downcast::<PyString>()?.to_string_lossy();
+            if value.contains('"') && value.contains('\'') {
+                return Err(PyValueError::new_err(
+                    "Both single and double quotes in attribute value",
+                ));
+            }
+            rendered.push(' ');
+            render_attribute_key_into(raw_key, &mut rendered);
+            rendered.push_str("=\"");
+            escape_str_into(&value, &mut rendered);
+            rendered.push('"');
+            continue;
+        }
+
         let escaped_value = render_attribute_value(value)?;
         rendered.push(' ');
         render_attribute_key_into(raw_key, &mut rendered);
