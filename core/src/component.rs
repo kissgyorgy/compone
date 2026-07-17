@@ -551,7 +551,21 @@ fn parse_html_class_value(
     py: Python<'_>,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<Option<Py<PyAny>>> {
-    let parsed = if can_parse_direct_html_class(value) {
+    let parsed = if let Ok(tuple) = value.downcast::<PyTuple>() {
+        let mut parsed = Vec::new();
+        if collect_direct_html_class_sequence(tuple.iter(), &mut parsed)? {
+            parsed
+        } else {
+            parse_dynamic_html_classes(py, value)?
+        }
+    } else if let Ok(list) = value.downcast::<PyList>() {
+        let mut parsed = Vec::new();
+        if collect_direct_html_class_sequence(list.iter(), &mut parsed)? {
+            parsed
+        } else {
+            parse_dynamic_html_classes(py, value)?
+        }
+    } else if can_parse_direct_html_class(value) {
         let mut parsed = Vec::new();
         collect_direct_html_classes(value, &mut parsed)?;
         parsed
@@ -562,6 +576,22 @@ fn parse_html_class_value(
         return Ok(None);
     }
     Ok(Some(PyList::new(py, parsed)?.unbind().into_any()))
+}
+
+fn collect_direct_html_class_sequence<'py>(
+    values: impl Iterator<Item = Bound<'py, PyAny>>,
+    parsed: &mut Vec<String>,
+) -> PyResult<bool> {
+    for value in values {
+        if value.is_none() {
+            continue;
+        }
+        let Ok(string) = value.downcast::<PyString>() else {
+            return Ok(false);
+        };
+        push_class_pieces(&string.to_string_lossy(), parsed);
+    }
+    Ok(true)
 }
 
 #[cold]
