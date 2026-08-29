@@ -7,29 +7,53 @@ dist-dir := justfile_directory() + "/dist/"
 check:
     prek run --all-files --hook-stage manual
 
-# Build the Rust extension in place for source-tree test runs
-build-extension:
-    maturin develop --release --skip-install
-
-# Run tests with all supported Python versions
-test-all: build-extension
+# Build and install the Rust extension for one Python version
+build-extension version="3.14": build-package
     #!/usr/bin/env bash
+    python="$(cd .. && pwd)/.venvs/py{{ version }}/bin/python"
+    uv pip install --python "$python" --reinstall --no-deps {{ dist-dir }}/*.whl
+
+# Run both implementations with all supported Python versions
+test-all: build-package
+    #!/usr/bin/env bash
+    set -euo pipefail
     for version in 3.10 3.11 3.12 3.13 3.14; do
-        run-version $version python$version -m pytest
+        python="$(cd .. && pwd)/.venvs/py${version}/bin/python"
+        pytest="$(dirname "$python")/pytest"
+        uv pip install --python "$python" --reinstall --no-deps {{ dist-dir }}/*.whl
+        env -u PYTHONPATH "$pytest" --import-mode=importlib
+        PYTHONPATH="$PWD" "$pytest"
     done
 
-# Run tests with pytest
-test version="3.14" *pytest-params="": build-extension
+# Run tests against the released Rust package (the default)
+test version="3.14" *pytest-params="": build-package
     #!/usr/bin/env bash
-    run-version {{ version }} python -m pytest {{ pytest-params }}
+    set -euo pipefail
+    python="$(cd .. && pwd)/.venvs/py{{ version }}/bin/python"
+    pytest="$(dirname "$python")/pytest"
+    uv pip install --python "$python" --reinstall --no-deps {{ dist-dir }}/*.whl
+    env -u PYTHONPATH "$pytest" --import-mode=importlib {{ pytest-params }}
 
-# Run tests continuously and re-run them with watchexec if files changed
+# Run tests against the retained Python implementation
+test-python version="3.14" *pytest-params="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python="$(cd .. && pwd)/.venvs/py{{ version }}/bin/python"
+    pytest="$(dirname "$python")/pytest"
+    PYTHONPATH="$PWD" "$pytest" {{ pytest-params }}
+
+# Run tests continuously against the default Rust package
 watchtests *pytest-params:
-    watchexec --restart --exts py --stop-timeout 0 -- pytest {{ pytest-params }}
+    watchexec --restart --exts py,rs,toml --stop-timeout 0 -- 'just test 3.14 {{ pytest-params }}'
+
+# Run tests continuously against the retained Python implementation
+watchtests-python *pytest-params:
+    watchexec --restart --exts py,rs,toml --stop-timeout 0 -- 'just test-python 3.14 {{ pytest-params }}'
 
 build-package:
     #!/usr/bin/env bash
-    uv build --clear --sdist --wheel --out-dir {{ dist-dir }}
+    uv build --clear --wheel --config-setting=--build-option=--py-limited-api=cp310 --out-dir {{ dist-dir }}
+    bash scripts/verify-wheel-contents.sh {{ dist-dir }}/*.whl
 
 testpypi-release: build-package
     #!/usr/bin/env bash

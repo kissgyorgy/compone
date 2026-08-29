@@ -1,3 +1,4 @@
+import pytest
 from compone import Component, html
 
 
@@ -33,6 +34,10 @@ def test_render_cache_observes_dict_mutations():
     assert str(DataLabel(data)) == '<span data-kind="result">finished</span>'
 
 
+@pytest.mark.skipif(
+    hasattr(html, "__file__"),
+    reason="the Python implementation stores bracket children as an immutable tuple",
+)
 def test_element_render_cache_observes_attribute_and_child_mutations():
     element = html.Div(class_="first")["one"]
     expected = '<div class="first">one</div>'

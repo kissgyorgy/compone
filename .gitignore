@@ -9,4 +9,6 @@ devenv.local.nix
 docs/site/
 
 core/target/
-core/compone/*.so
+core/build/
+core/*.egg-info/
+core/compone*.so

@@ -2556,7 +2556,7 @@ pub fn Component(func_or_class: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     }
 }
 
-fn make_func_component(func: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+pub(crate) fn make_func_component(func: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let py = func.py();
     let (orig_sig, positional_args) = make_sig(func)?;
     let (parameters, pass_children, children_positional_index, var_keyword) = filter_signature(

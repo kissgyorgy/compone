@@ -335,10 +335,6 @@ pub fn add_html_exports(_py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResu
     module.add_function(wrap_pyfunction!(classes, module)?)?;
     module.add_function(wrap_pyfunction!(CustomHTMLElement, module)?)?;
     module.add_function(wrap_pyfunction!(MetaCharset, module)?)?;
-    module.add_function(wrap_pyfunction!(html_element, module)?)?;
-    module.add_function(wrap_pyfunction!(void_html_element, module)?)?;
-    module.add_function(wrap_pyfunction!(list_html_element, module)?)?;
-    module.add_function(wrap_pyfunction!(html_element_with_attributes, module)?)?;
     Ok(())
 }
 
