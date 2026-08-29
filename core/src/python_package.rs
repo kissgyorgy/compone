@@ -252,7 +252,10 @@ fn add_html_elements(py: Python<'_>, html: &Bound<'_, PyModule>) -> PyResult<()>
     ] {
         let attrs = PyDict::new(py);
         attrs.set_item("type", button_type)?;
-        html.add(export, html_element_with_attributes(py, "button", &attrs)?)?;
+        html.add(
+            export,
+            html_element_with_attributes(py, "button", export, &attrs)?,
+        )?;
     }
     Ok(())
 }

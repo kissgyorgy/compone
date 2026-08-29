@@ -356,12 +356,13 @@ pub fn list_html_element(py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
 pub fn html_element_with_attributes(
     py: Python<'_>,
     name: &str,
+    class_name: &str,
     attrs: &Bound<'_, PyDict>,
 ) -> PyResult<Py<PyAny>> {
     make_element_class(
         py,
         name,
-        &capitalize(name),
+        class_name,
         "element",
         true,
         false,
