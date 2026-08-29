@@ -21,7 +21,7 @@ struct HTMLElementDefinition {
     kind: HTMLElementKind,
 }
 
-const HTML_ELEMENTS: &[HTMLElementDefinition] = &[
+static HTML_ELEMENTS: [HTMLElementDefinition; 113] = [
     element("Address", "address", "content_sectioning"),
     element("Article", "article", "content_sectioning"),
     element("Aside", "aside", "content_sectioning"),
@@ -137,7 +137,7 @@ const HTML_ELEMENTS: &[HTMLElementDefinition] = &[
     element("Template", "template", "web_components"),
 ];
 
-const HTML_CATEGORIES: &[&str] = &[
+static HTML_CATEGORIES: [&str; 13] = [
     "content_sectioning",
     "embedded",
     "forms",
@@ -236,7 +236,7 @@ pub fn initialize_submodules(py: Python<'_>, root: &Bound<'_, PyModule>) -> PyRe
 }
 
 fn add_html_elements(py: Python<'_>, html: &Bound<'_, PyModule>) -> PyResult<()> {
-    for definition in HTML_ELEMENTS {
+    for definition in &HTML_ELEMENTS {
         let class = match definition.kind {
             HTMLElementKind::Element => html_element(py, definition.tag)?,
             HTMLElementKind::Void => void_html_element(py, definition.tag)?,
@@ -261,7 +261,7 @@ fn add_html_submodules(py: Python<'_>, html: &Bound<'_, PyModule>) -> PyResult<(
     let elements = make_package(py, "compone.html.elements")?;
     register_child(py, html, "elements", &elements)?;
 
-    for category in HTML_CATEGORIES {
+    for category in &HTML_CATEGORIES {
         let full_name = format!("compone.html.elements.{category}");
         let module = PyModule::new(py, &full_name)?;
         for definition in HTML_ELEMENTS
