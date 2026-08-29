@@ -1,5 +1,45 @@
+from collections.abc import Callable
+from importlib import import_module
+from typing import Protocol, TypeVar, cast
+
 import pytest
-from compone import Component, html
+
+
+class _Element(Protocol):
+    props: dict[str, list[str]]
+
+    def __getitem__(self, children: object, /) -> "_Element": ...
+
+    def __iadd__(self, child: object, /) -> "_Element": ...
+
+
+class _Tag(Protocol):
+    def __call__(self, **kwargs: object) -> _Element: ...
+
+    def __getitem__(self, children: object, /) -> _Element: ...
+
+
+class _Html(Protocol):
+    Ul: _Tag
+    Li: _Tag
+    Span: _Tag
+    Div: _Tag
+
+
+_ComponentFunction = TypeVar("_ComponentFunction", bound=Callable[..., object])
+
+
+class _ComponentDecorator(Protocol):
+    def __call__(
+        self,
+        component: _ComponentFunction,
+        /,
+    ) -> _ComponentFunction: ...
+
+
+compone = import_module("compone")
+Component = cast(_ComponentDecorator, vars(compone)["Component"])
+html = cast(_Html, cast(object, import_module("compone.html")))
 
 
 @Component
