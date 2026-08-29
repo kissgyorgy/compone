@@ -229,9 +229,6 @@ pub fn initialize_submodules(py: Python<'_>, root: &Bound<'_, PyModule>) -> PyRe
 
     crate::htmx::add_module(py, root)?;
     crate::robots::add_module(py, root)?;
-
-    register_alias(py, "compone.compone", root)?;
-    root.add("compone", root)?;
     Ok(())
 }
 
