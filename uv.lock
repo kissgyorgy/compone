@@ -130,7 +130,7 @@ wheels = [
 
 [[package]]
 name = "compone"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "core" }
 dependencies = [
     { name = "markupsafe" },
