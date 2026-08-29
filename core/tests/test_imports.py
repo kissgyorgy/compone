@@ -30,8 +30,7 @@ import compone.utils as utils
 import compone.xml as xml
 import pytest
 
-MODULE_FILE = compone.__file__
-IS_RUST_PACKAGE = MODULE_FILE is not None and Path(MODULE_FILE).suffix in {
+IS_RUST_PACKAGE = Path(compone.__file__).suffix in {
     ".pyd",
     ".so",
 }
