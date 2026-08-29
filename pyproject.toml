@@ -44,6 +44,9 @@ norecursedirs = """
     nogit
 """
 
+[tool.basedpyright]
+reportUnusedCallResult = false
+
 [tool.ruff.lint]
 select = [
     "C90", # mccabe code complexity

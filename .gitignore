@@ -7,3 +7,8 @@ devenv.local.nix
 .benchmarks
 
 docs/site/
+
+core/target/
+core/build/
+core/*.egg-info/
+core/compone*.so

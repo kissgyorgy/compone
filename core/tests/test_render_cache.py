@@ -1,0 +1,88 @@
+from collections.abc import Callable
+from importlib import import_module
+from typing import Protocol, TypeVar, cast
+
+import pytest
+
+
+class _Element(Protocol):
+    props: dict[str, list[str]]
+
+    def __getitem__(self, children: object, /) -> "_Element": ...
+
+    def __iadd__(self, child: object, /) -> "_Element": ...
+
+
+class _Tag(Protocol):
+    def __call__(self, **kwargs: object) -> _Element: ...
+
+    def __getitem__(self, children: object, /) -> _Element: ...
+
+
+class _Html(Protocol):
+    Ul: _Tag
+    Li: _Tag
+    Span: _Tag
+    Div: _Tag
+
+
+_ComponentFunction = TypeVar("_ComponentFunction", bound=Callable[..., object])
+
+
+class _ComponentDecorator(Protocol):
+    def __call__(
+        self,
+        component: _ComponentFunction,
+        /,
+    ) -> _ComponentFunction: ...
+
+
+compone = import_module("compone")
+Component = cast(_ComponentDecorator, vars(compone)["Component"])
+html = cast(_Html, cast(object, import_module("compone.html")))
+
+
+@Component
+def ItemList(items: list[str]) -> object:
+    return html.Ul[[html.Li[item] for item in items]]
+
+
+@Component
+def DataLabel(data: dict[str, str]) -> object:
+    return html.Span(data_kind=data["kind"])[data["label"]]
+
+
+def test_render_cache_observes_list_mutations():
+    items = ["first", "second"]
+    expected = "<ul><li>first</li><li>second</li></ul>"
+    assert tuple(str(ItemList(items)) for _ in range(3)) == (expected,) * 3
+
+    items[1] = "changed"
+    items.append("third")
+    assert str(ItemList(items)) == (
+        "<ul><li>first</li><li>changed</li><li>third</li></ul>"
+    )
+
+
+def test_render_cache_observes_dict_mutations():
+    data = {"kind": "status", "label": "ready"}
+    expected = '<span data-kind="status">ready</span>'
+    assert tuple(str(DataLabel(data)) for _ in range(3)) == (expected,) * 3
+
+    data["kind"] = "result"
+    data["label"] = "finished"
+    assert str(DataLabel(data)) == '<span data-kind="result">finished</span>'
+
+
+@pytest.mark.skipif(
+    hasattr(html, "__file__"),
+    reason="the Python implementation stores bracket children as an immutable tuple",
+)
+def test_element_render_cache_observes_attribute_and_child_mutations():
+    element = html.Div(class_="first")["one"]
+    expected = '<div class="first">one</div>'
+    assert tuple(str(element) for _ in range(3)) == (expected,) * 3
+
+    element += "two"
+    element.props["class_"].append("second")
+    assert str(element) == '<div class="first second">onetwo</div>'

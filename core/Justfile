@@ -1,41 +1,69 @@
 help:
     @just --list
 
-dist-dir := justfile_directory() + "/dist/"
+root-dir := canonicalize(source_directory() + "/..")
+dist-dir := root-dir + "/core/dist"
+
+[private]
+_install-extension version:
+    uv pip install --python "{{ root-dir }}/.venvs/py{{ version }}/bin/python" --reinstall --no-deps {{ dist-dir }}/*.whl
+
+[private]
+_test-rust version *pytest-params:
+    env -u PYTHONPATH "{{ root-dir }}/.venvs/py{{ version }}/bin/pytest" --import-mode=importlib {{ pytest-params }}
+
+[private]
+_test-python version *pytest-params:
+    PYTHONPATH="{{ root-dir }}/core" "{{ root-dir }}/.venvs/py{{ version }}/bin/pytest" {{ pytest-params }}
+
+[private]
+_test-both version: (_install-extension version) (_test-rust version "") (_test-python version "")
+
+[private]
+_watchtests recipe *pytest-params:
+    watchexec --restart --exts py,rs,toml --stop-timeout 0 -- 'just {{ recipe }} 3.14 {{ pytest-params }}'
+
+[private]
+_publish token url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export UV_PUBLISH_TOKEN=$(op read op://Secrets/{{ token }}/credential)
+    if [[ -n "{{ url }}" ]]; then
+        export UV_PUBLISH_URL="{{ url }}"
+    fi
+    ls -la {{ dist-dir }}
+    uv publish {{ dist-dir }}/*
 
 # Run linters and other checks
 check:
     prek run --all-files --hook-stage manual
 
-# Run tests with all supported Python versions
-test-all:
-    #!/usr/bin/env bash
-    for version in 3.10 3.11 3.12 3.13; do
-        run-version $version python$version -m pytest
-    done
-
-# Run tests with pytest
-test version="3.12" *pytest-params="":
-    #!/usr/bin/env bash
-    run-version {{ version }} python -m pytest {{ pytest-params }}
-
-# Run tests continuously and re-run them with watchexec if files changed
-watchtests *pytest-params:
-    watchexec --restart --exts py --stop-timeout 0 -- pytest {{ pytest-params }}
-
 build-package:
     #!/usr/bin/env bash
-    uv build --clear --sdist --wheel --out-dir {{ dist-dir }}
+    uv build --clear --wheel --config-setting=--build-option=--py-limited-api=cp310 --out-dir {{ dist-dir }}
+    bash scripts/verify-wheel-contents.sh {{ dist-dir }}/*.whl
 
-testpypi-release: build-package
-    #!/usr/bin/env bash
-    export UV_PUBLISH_TOKEN=$(op.exe read op://Secrets/test-pypi-token/credential)
-    export UV_PUBLISH_URL=https://test.pypi.org/legacy/
-    ls -la {{ dist-dir }}
-    uv publish {{ dist-dir }}/*
+# Build and install the Rust extension for one Python version
+build-extension version="3.14": build-package (_install-extension version)
 
-release: check test-all
-    #!/usr/bin/env bash
-    export UV_PUBLISH_TOKEN=$(op.exe read op://Secrets/pypi-token/credential)
-    ls -la {{ dist-dir }}
-    uv publish {{ dist-dir }}/*
+# Run tests against the released Rust package (the default)
+test version="3.14" *pytest-params="": (build-extension version) (_test-rust version pytest-params)
+
+# Run tests against an already-installed Rust package without rebuilding
+test-installed version="3.14" *pytest-params="": (_test-rust version pytest-params)
+
+# Run tests against the retained Python implementation
+test-python version="3.14" *pytest-params="": (_test-python version pytest-params)
+
+# Run both implementations with all supported Python versions
+test-all: build-package (_test-both "3.10") (_test-both "3.11") (_test-both "3.12") (_test-both "3.13") (_test-both "3.14")
+
+# Run tests continuously against the default Rust package
+watchtests *pytest-params="": (_watchtests "test" pytest-params)
+
+# Run tests continuously against the retained Python implementation
+watchtests-python *pytest-params="": (_watchtests "test-python" pytest-params)
+
+testpypi-release: build-package (_publish "test-pypi-token" "https://test.pypi.org/legacy/")
+
+release: check test-all (_publish "pypi-token" "")
