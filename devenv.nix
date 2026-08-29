@@ -1,14 +1,15 @@
 { pkgs, lib, config, ... }:
 let
   rootDir = config.devenv.root;
+  workspacePythonPath = lib.concatMapStringsSep ":" (path: "${rootDir}/${path}")
+    [ "core" "cli" "frameworks/bootstrap5" "stories" "ssg" ];
 in
 {
   # https://devenv.sh/basics/
   env = {
     UV_PYTHON_DOWNLOADS = "never";
     UV_PROJECT_ENVIRONMENT = "${rootDir}/.venvs/py3.13";
-    PYTHONPATH = lib.concatMapStringsSep ":" (p: "${rootDir}/${p}")
-      [ "core" "cli" "frameworks/bootstrap5" "stories" "ssg" ];
+    PYTHONPATH = workspacePythonPath;
   };
 
   # https://devenv.sh/packages/
@@ -42,6 +43,7 @@ in
 
   scripts.activate-version.exec = ''
     VERSION=$1
+    export PYTHONPATH=${lib.escapeShellArg workspacePythonPath}
     export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
     unset VIRTUAL_ENV
     uv run --active -p python$VERSION -- $SHELL
@@ -50,10 +52,10 @@ in
   scripts.run-version.exec = ''
     VERSION=$1
     shift
-    COMMAND="$@"
+    export PYTHONPATH=${lib.escapeShellArg workspacePythonPath}
     export UV_PROJECT_ENVIRONMENT=${rootDir}/.venvs/py$VERSION
     unset VIRTUAL_ENV
-    uv run -p python$VERSION -- $COMMAND
+    uv run -p python$VERSION -- "$@"
   '';
 
   languages.javascript = {
