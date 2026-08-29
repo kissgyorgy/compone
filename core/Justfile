@@ -3,6 +3,7 @@ help:
 
 root-dir := canonicalize(source_directory() + "/..")
 dist-dir := root-dir + "/core/dist"
+raw-dist-dir := root-dir + "/core/target/raw-dist"
 
 [private]
 _install-extension version:
@@ -40,7 +41,14 @@ check:
 
 build-package:
     #!/usr/bin/env bash
-    uv build --clear --wheel --config-setting=--build-option=--py-limited-api=cp310 --out-dir {{ dist-dir }}
+    set -euo pipefail
+    uv build --clear --wheel --config-setting=--build-option=--py-limited-api=cp310 --out-dir {{ raw-dist-dir }}
+    rm -f {{ dist-dir }}/*.whl
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        auditwheel repair {{ raw-dist-dir }}/*.whl --wheel-dir {{ dist-dir }}
+    else
+        mv {{ raw-dist-dir }}/*.whl {{ dist-dir }}/
+    fi
     bash scripts/verify-wheel-contents.sh {{ dist-dir }}/*.whl
 
 # Build and install the Rust extension for one Python version

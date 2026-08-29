@@ -20,6 +20,7 @@ in
     cargo
     rustc
     maturin
+    python313Packages.auditwheel
     # needed for lxml
     libxml2
     libxslt
