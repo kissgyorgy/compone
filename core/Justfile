@@ -14,12 +14,12 @@ build-extension:
 # Run tests with all supported Python versions
 test-all: build-extension
     #!/usr/bin/env bash
-    for version in 3.10 3.11 3.12 3.13; do
+    for version in 3.10 3.11 3.12 3.13 3.14; do
         run-version $version python$version -m pytest
     done
 
 # Run tests with pytest
-test version="3.12" *pytest-params="": build-extension
+test version="3.14" *pytest-params="": build-extension
     #!/usr/bin/env bash
     run-version {{ version }} python -m pytest {{ pytest-params }}
 

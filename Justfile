@@ -8,7 +8,7 @@ help:
 # Install packages in all Python version virtualenvs
 install-versions:
     #!/usr/bin/env bash
-    for version in 3.10 3.11 3.12 3.13; do \
+    for version in 3.10 3.11 3.12 3.13 3.14; do \
         run-version $version uv sync
     done
 
